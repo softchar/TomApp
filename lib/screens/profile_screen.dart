@@ -1,10 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../main.dart' show popupAlertService;
 import '../services/theme_provider.dart';
+import '../services/notification_service.dart';
 
 /// 我的页面
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final NotificationService _notificationService = NotificationService();
+  int _notificationCount = 0;
+
+  final List<String> _randomMessages = [
+    'RIVERUSDT 的资费间隔已变为1小时',
+    'ETHUSDT 发现高费率机会！',
+    'BTCUSDT 资费间隔更新',
+    '新的1小时合约可用',
+    '资费提醒：检查您的持仓',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +70,85 @@ class ProfileScreen extends StatelessWidget {
                 ),
               );
             },
+          ),
+          const SizedBox(height: 32),
+          // 测试部分
+          _buildSectionHeader('测试功能'),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 测试整点弹窗按钮
+                  FilledButton.icon(
+                    icon: const Icon(Icons.alarm),
+                    label: const Text('测试整点弹窗'),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      await popupAlertService.testCheck();
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('已触发整点检查测试'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // 测试通知按钮
+                  FilledButton.icon(
+                    icon: const Icon(Icons.notifications_active),
+                    label: const Text('测试通知'),
+                    onPressed: () async {
+                      setState(() {
+                        _notificationCount++;
+                      });
+                      final messenger = ScaffoldMessenger.of(context);
+                      await _notificationService.show(
+                        _notificationCount,
+                        '测试通知 #$_notificationCount',
+                        _randomMessages[_notificationCount % _randomMessages.length],
+                      );
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text('已发送通知 #$_notificationCount'),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // 清除通知按钮
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.clear_all, size: 18),
+                    label: const Text('清除通知'),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      await _notificationService.cancelAll();
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('所有通知已清除')),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 32),
           // 关于部分

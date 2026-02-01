@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/funding_rate_provider.dart';
 import 'services/theme_provider.dart';
+import 'services/popup_alert_service.dart';
 import 'screens/main_navigation.dart';
 
-void main() {
+late final PopupAlertService popupAlertService;
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 初始化弹窗服务
+  popupAlertService = PopupAlertService();
+  await popupAlertService.initialize();
   runApp(const MyApp());
 }
 

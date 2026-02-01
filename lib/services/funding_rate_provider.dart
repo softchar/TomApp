@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/funding_rate.dart';
 import '../services/binance_api_service.dart';
+import '../services/notification_service.dart';
 
 /// 资金费率数据管理Provider
 class FundingRateProvider with ChangeNotifier {
   final BinanceApiService _apiService;
+  final NotificationService _notificationService;
 
   List<FundingRate> _fundingRates = [];
   List<FundingRate> _filteredRates = [];
@@ -15,8 +17,11 @@ class FundingRateProvider with ChangeNotifier {
   String _searchQuery = '';
   SortType _sortType = SortType.intervalAsc;
 
-  FundingRateProvider({BinanceApiService? apiService})
-      : _apiService = apiService ?? BinanceApiService();
+  FundingRateProvider({
+    BinanceApiService? apiService,
+    NotificationService? notificationService,
+  })  : _apiService = apiService ?? BinanceApiService(),
+        _notificationService = notificationService ?? NotificationService();
 
   List<FundingRate> get fundingRates => _filteredRates;
   bool get isLoading => _isLoading;
@@ -31,7 +36,12 @@ class FundingRateProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _fundingRates = await _apiService.getUSDTFuturesRates();
+      final newRates = await _apiService.getUSDTFuturesRates();
+
+      // 检查间隔变化并发送通知
+      await _notificationService.checkIntervalChanges(newRates);
+
+      _fundingRates = newRates;
       _applyFilterAndSort();
       _errorMessage = null;
     } catch (e) {
