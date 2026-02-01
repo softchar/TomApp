@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/softc/Desktop/**)",
+      "Bash(flutter run:*)",
+      "Bash(flutter create:*)",
+      "Bash(flutter devices:*)",
+      "Bash(flutter:*)",
+      "Bash(adb:*)"
+    ]
+  }
+}
