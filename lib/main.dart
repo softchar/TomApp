@@ -3,12 +3,35 @@ import 'package:provider/provider.dart';
 import 'services/funding_rate_provider.dart';
 import 'services/theme_provider.dart';
 import 'services/popup_alert_service.dart';
+import 'services/long_short_provider.dart';
+import 'services/binance_api_service.dart';
 import 'screens/main_navigation.dart';
 
 late final PopupAlertService popupAlertService;
 
+// ============================================
+// API 配置区域
+// ============================================
+void configureApi() {
+  // 如果在中国大陆无法直接访问 Binance API，请设置代理服务器地址
+  // 部署代理服务器请参考: proxy_server/README.md
+
+  // 示例代理地址（替换为你自己的代理服务器地址）：
+  // BinanceApiService.setCustomBaseUrl('https://your-proxy.com/api');
+
+  // Cloudflare Workers 示例：
+  // BinanceApiService.setCustomBaseUrl('https://your-worker.workers.dev/api');
+
+  // 默认使用官方 API（需要能访问 fapi.binance.com）
+  BinanceApiService.resetBaseUrl();
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 配置 API
+  configureApi();
+
   // 初始化弹窗服务
   popupAlertService = PopupAlertService();
   await popupAlertService.initialize();
@@ -24,6 +47,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => FundingRateProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => LongShortProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../main.dart' show popupAlertService;
 import '../services/theme_provider.dart';
 import '../services/notification_service.dart';
+import '../services/binance_api_service.dart';
 
 /// 我的页面
 class ProfileScreen extends StatefulWidget {
@@ -14,7 +15,9 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final NotificationService _notificationService = NotificationService();
+  final BinanceApiService _apiService = BinanceApiService();
   int _notificationCount = 0;
+  bool _isTestingConnection = false;
 
   final List<String> _randomMessages = [
     'RIVERUSDT 的资费间隔已变为1小时',
@@ -145,6 +148,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       }
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  // 测试 API 连接按钮
+                  OutlinedButton.icon(
+                    icon: _isTestingConnection
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cloud_sync, size: 18),
+                    label: Text(_isTestingConnection ? '测试中...' : '测试 API 连接'),
+                    onPressed: _isTestingConnection
+                        ? null
+                        : () => _testApiConnection(context),
                   ),
                 ],
               ),
@@ -302,6 +320,117 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 8),
         const Text('支持亮色/暗色主题切换'),
       ],
+    );
+  }
+
+  /// 测试 API 连接
+  Future<void> _testApiConnection(BuildContext context) async {
+    setState(() => _isTestingConnection = true);
+
+    try {
+      final result = await _apiService.testConnection();
+
+      if (!mounted) return;
+
+      final isConnected = result['isConnected'] as bool;
+      final message = result['message'] as String;
+      final baseUrl = result['baseUrl'] as String;
+      final details = result['details'] as Map<String, bool>;
+
+      // 显示详细结果
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                isConnected ? Icons.check_circle : Icons.error,
+                color: isConnected ? Colors.green : Colors.orange,
+              ),
+              const SizedBox(width: 8),
+              const Text('API 连接测试'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('服务器: $baseUrl',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 16),
+              _buildStatusItem('基础 API', details['premiumIndex'] ?? false),
+              _buildStatusItem('多空比 API', details['longShortRatio'] ?? false),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isConnected
+                      ? Colors.green.withOpacity(0.1)
+                      : Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isConnected ? Icons.info : Icons.warning,
+                      size: 20,
+                      color: isConnected ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(message)),
+                  ],
+                ),
+              ),
+              if (!isConnected) ...[
+                const SizedBox(height: 16),
+                const Text('提示：请配置代理服务器',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('测试失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTestingConnection = false);
+      }
+    }
+  }
+
+  Widget _buildStatusItem(String label, bool isSuccess) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            isSuccess ? Icons.check_circle : Icons.cancel,
+            size: 16,
+            color: isSuccess ? Colors.green : Colors.red,
+          ),
+          const SizedBox(width: 8),
+          Text(label),
+          const Spacer(),
+          Text(
+            isSuccess ? '正常' : '失败',
+            style: TextStyle(
+              fontSize: 12,
+              color: isSuccess ? Colors.green : Colors.red,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

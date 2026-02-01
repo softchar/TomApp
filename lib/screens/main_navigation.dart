@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'funding_screen.dart';
-import 'placeholder_screen.dart';
+import 'long_short_screen.dart';
 import 'profile_screen.dart';
 
 /// 主导航页面 - 带底部导航栏
@@ -18,7 +18,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _screens = [
     const HomeScreen(),
     const FundingScreen(),
-    const PlaceholderScreen(title: '待定'),
+    const LongShortScreen(),
     const ProfileScreen(),
   ];
 
@@ -55,7 +55,7 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(
             icon: Icon(Icons.apps_outlined),
             activeIcon: Icon(Icons.apps),
-            label: '待定',
+            label: '多空',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
