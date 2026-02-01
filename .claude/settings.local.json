@@ -6,7 +6,8 @@
       "Bash(flutter create:*)",
       "Bash(flutter devices:*)",
       "Bash(flutter:*)",
-      "Bash(adb:*)"
+      "Bash(adb:*)",
+      "Bash(ssh:*)"
     ]
   }
 }

@@ -13,7 +13,7 @@ class FundingRateProvider with ChangeNotifier {
   String? _errorMessage;
   Timer? _updateTimer;
   String _searchQuery = '';
-  SortType _sortType = SortType.symbolAsc;
+  SortType _sortType = SortType.intervalAsc;
 
   FundingRateProvider({BinanceApiService? apiService})
       : _apiService = apiService ?? BinanceApiService();
@@ -22,6 +22,7 @@ class FundingRateProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   int get rateCount => _filteredRates.length;
+  SortType get sortType => _sortType;
 
   /// 获取资金费率数据
   Future<void> fetchFundingRates() async {
@@ -84,8 +85,33 @@ class FundingRateProvider with ChangeNotifier {
           rate.symbol.contains(_searchQuery)).toList();
     }
 
-    // 始终按费率间隔排序（间隔小的在前）
-    rates.sort((a, b) => a.fundingIntervalHours.compareTo(b.fundingIntervalHours));
+    // 根据选择的排序方式排序
+    switch (_sortType) {
+      case SortType.intervalAsc:
+        // 按间隔升序（间隔小的在前）
+        rates.sort((a, b) => a.fundingIntervalHours.compareTo(b.fundingIntervalHours));
+        break;
+      case SortType.intervalDesc:
+        // 按间隔降序（间隔大的在前）
+        rates.sort((a, b) => b.fundingIntervalHours.compareTo(a.fundingIntervalHours));
+        break;
+      case SortType.rateDesc:
+        // 按费率降序（费率高的在前）
+        rates.sort((a, b) => b.fundingRate.compareTo(a.fundingRate));
+        break;
+      case SortType.rateAsc:
+        // 按费率升序（费率低的在前）
+        rates.sort((a, b) => a.fundingRate.compareTo(b.fundingRate));
+        break;
+      case SortType.symbolAsc:
+        // 按交易对名称升序
+        rates.sort((a, b) => a.symbol.compareTo(b.symbol));
+        break;
+      case SortType.symbolDesc:
+        // 按交易对名称降序
+        rates.sort((a, b) => b.symbol.compareTo(a.symbol));
+        break;
+    }
 
     // 限制最多显示20条
     if (rates.length > 20) {
@@ -110,8 +136,10 @@ class FundingRateProvider with ChangeNotifier {
 
 /// 排序类型枚举
 enum SortType {
-  symbolAsc,
-  symbolDesc,
+  intervalAsc,
+  intervalDesc,
   rateDesc,
   rateAsc,
+  symbolAsc,
+  symbolDesc,
 }
