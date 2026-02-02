@@ -1,0 +1,45 @@
+# 工作流名称，可自定义
+name: Flutter Build APK
+
+# 触发条件：push 到 main 分支、手动触发（workflow_dispatch）
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # 手动触发开关
+
+# 任务配置
+jobs:
+  build:
+    # 运行环境：Ubuntu 最新版
+    runs-on: ubuntu-latest
+
+    steps:
+      # 步骤1：拉取仓库代码到 GitHub 服务器
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 步骤2：安装 Flutter SDK（自动适配最新稳定版）
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable' # 指定用稳定版
+          channel: 'stable'
+
+      # 步骤3：更新 Flutter 依赖（flutter pub get）
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 步骤4：清理缓存（避免构建冲突）
+      - name: Clean project
+        run: flutter clean
+
+      # 步骤5：构建 APK（debug 版，无需签名；如需 release 版见下方说明）
+      - name: Build APK
+        run: flutter build apk --debug --split-per-abi
+
+      # 步骤6：上传生成的 APK 作为构建产物（方便下载）
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-apk # 产物名称，可自定义
+          path: build/app/outputs/flutter-apk/ # APK 生成路径（固定）
