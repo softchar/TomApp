@@ -1,67 +1,60 @@
 # 工作流名称
 name: Flutter Build APK
 
-# 触发条件：push到main分支、PR到main分支、手动触发
+# 触发条件
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch: # 手动触发（在GitHub Actions页面可点击运行）
+  workflow_dispatch: # 支持手动点击运行
 
 # 任务定义
 jobs:
   build-apk:
-    # 运行环境：Ubuntu最新版
+    name: Build Flutter APK
     runs-on: ubuntu-latest
 
     steps:
-      # 步骤1：检出仓库代码
-      - name: Checkout code
+      # 1. 检出代码
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 步骤2：配置Java环境（Android构建需要Java 17）
+      # 2. 配置 Java 环境 (Android 构建必须)
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle # 缓存Gradle依赖，加速构建
+          cache: gradle
 
-      # 步骤3：配置Flutter环境
+      # 3. 配置 Flutter 环境
+      # 针对你遇到的报错，这里直接指定具体的版本号
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          # 指定Flutter版本（stable=稳定版，也可填具体版本如3.16.0）
-          flutter-version: 'stable'
-          # 缓存Flutter依赖，加速后续构建
+          flutter-version: '3.27.1' # 推荐使用具体版本代替 'stable'
+          channel: 'stable'
           cache: true
 
-      # 步骤4：获取Flutter项目依赖
-      - name: Get Flutter dependencies
+      # 4. 检查 Flutter 环境是否正常
+      - name: Flutter doctor
+        run: flutter doctor
+
+      # 5. 获取项目依赖
+      - name: Get dependencies
         run: flutter pub get
 
-      # 步骤5：（可选）运行代码分析（按需开启）
-      # - name: Analyze code
-      #   run: flutter analyze
-
-      # 步骤6：（可选）运行单元测试（按需开启）
-      # - name: Run tests
-      #   run: flutter test
-
-      # 步骤7：构建Release版APK
+      # 6. 构建 APK
+      # 注意：如果你的项目没有配置 android/key.properties，
+      # 这里生成的 APK 是没有签名的，只能用于本地安装测试，无法上架。
       - name: Build Release APK
         run: flutter build apk --release --split-per-abi
-        # 说明：
-        # --release：构建正式版（需签名配置才能安装到真机）
-        # --split-per-abi：按CPU架构拆分APK（减小体积），若不需要可移除
 
-      # 步骤8：上传APK作为构建产物（方便下载）
+      # 7. 上传构建好的 APK 产物
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: flutter-apk
-          # APK输出路径（拆分架构则是多个APK，未拆分则是app-release.apk）
-          path: |
-            build/app/outputs/flutter-apk/app-*-release.apk
-            build/app/outputs/flutter-apk/app-release.apk
+          name: release-apks
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+          retention-days: 7 # 产物保存天数
