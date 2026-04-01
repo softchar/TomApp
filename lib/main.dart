@@ -5,6 +5,7 @@ import 'services/theme_provider.dart';
 import 'services/popup_alert_service.dart';
 import 'services/long_short_provider.dart';
 import 'services/binance_api_service.dart';
+import 'services/pump_alert_service.dart';
 import 'screens/main_navigation.dart';
 
 late final PopupAlertService popupAlertService;
@@ -35,6 +36,11 @@ void main() async {
   // 初始化弹窗服务
   popupAlertService = PopupAlertService();
   await popupAlertService.initialize();
+
+  // 启动快速上涨检测服务
+  final pumpService = PumpAlertService.instance;
+  await pumpService.start();
+
   runApp(const MyApp());
 }
 
@@ -48,6 +54,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => FundingRateProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => LongShortProvider()),
+        ChangeNotifierProvider(create: (_) => PumpAlertService.instance.store),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
