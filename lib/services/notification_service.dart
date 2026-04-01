@@ -169,4 +169,33 @@ class NotificationService {
   Future<void> cancelAll() async {
     await _notifications.cancelAll();
   }
+
+  /// 发送快速上涨通知
+  void showPumpNotification({
+    required String symbol,
+    required double priceChange,
+    required double currentPrice,
+  }) {
+    const androidDetails = AndroidNotificationDetails(
+      'pump_alerts',
+      '快速上涨警报',
+      channelDescription: '合约快速上涨通知',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    const iosDetails = DarwinNotificationDetails();
+
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    _notifications.show(
+      symbol.hashCode,
+      '🚀 $symbol 快速上涨',
+      '+${priceChange.toStringAsFixed(2)}% • 当前价格 \$${currentPrice.toStringAsFixed(2)}',
+      details,
+    );
+  }
 }
