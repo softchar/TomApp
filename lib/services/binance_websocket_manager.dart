@@ -32,6 +32,7 @@ class BinanceWebSocketManager {
   static const String _tickerStream = '!ticker@arr';
 
   WebSocketChannel? _channel;
+  StreamSubscription? _streamSubscription;
   final StreamController<Ticker> _tickerController = StreamController.broadcast();
   WebSocketConnectionState _connectionState = WebSocketConnectionState.disconnected;
   Timer? _reconnectTimer;
@@ -52,13 +53,15 @@ class BinanceWebSocketManager {
       final uri = Uri.parse('$_baseUrl/$_tickerStream');
       _channel = WebSocketChannel.connect(uri);
 
-      _channel!.stream.listen(
+      // Store the stream subscription for proper cleanup
+      _streamSubscription = _channel!.stream.listen(
         _onMessage,
         onError: _onError,
         onDone: _onDone,
         cancelOnError: false,
       );
 
+      // Set connected after stream is successfully established
       _connectionState = WebSocketConnectionState.connected;
       _reconnectAttempts = 0;
     } catch (e) {
@@ -69,6 +72,7 @@ class BinanceWebSocketManager {
 
   Future<void> disconnect() async {
     _reconnectTimer?.cancel();
+    _streamSubscription?.cancel();
     await _channel?.sink.close();
     _connectionState = WebSocketConnectionState.disconnected;
   }
@@ -103,10 +107,10 @@ class BinanceWebSocketManager {
 
     final delay = _calculateReconnectDelay();
     _connectionState = WebSocketConnectionState.reconnecting;
+    _reconnectAttempts++;  // Increment when scheduling, not in timer callback
 
     _reconnectTimer = Timer(delay, () {
-      _reconnectAttempts++;
-      connect();
+      connect();  // Don't increment here
     });
   }
 
@@ -124,6 +128,7 @@ class BinanceWebSocketManager {
 
   void dispose() {
     disconnect();
+    _streamSubscription?.cancel();
     _tickerController.close();
   }
 }
