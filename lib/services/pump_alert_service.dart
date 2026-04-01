@@ -28,16 +28,22 @@ class PumpAlertService {
   Future<void> start() async {
     if (_isRunning) return;
 
-    _isRunning = true;
+    try {
+      // 连接 WebSocket
+      await _wsManager.connect();
 
-    // 连接 WebSocket
-    await _wsManager.connect();
+      // 订阅 ticker 数据
+      _tickerSubscription = _wsManager.tickerStream.listen(_onTicker);
 
-    // 订阅 ticker 数据
-    _tickerSubscription = _wsManager.tickerStream.listen(_onTicker);
+      // 初始化通知服务
+      await _notificationService.initialize();
 
-    // 初始化通知服务
-    await _notificationService.initialize();
+      // Only set running after successful initialization
+      _isRunning = true;
+    } catch (e) {
+      _isRunning = false;
+      rethrow;
+    }
   }
 
   Future<void> stop() async {
@@ -79,8 +85,8 @@ class PumpAlertService {
     );
   }
 
-  void dispose() {
-    stop();
+  Future<void> dispose() async {
+    await stop();
     _wsManager.dispose();
   }
 }

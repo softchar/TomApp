@@ -171,11 +171,15 @@ class NotificationService {
   }
 
   /// 发送快速上涨通知
-  void showPumpNotification({
+  Future<void> showPumpNotification({
     required String symbol,
     required double priceChange,
     required double currentPrice,
-  }) {
+  }) async {
+    if (!_initialized) {
+      await initialize();
+    }
+
     const androidDetails = AndroidNotificationDetails(
       'pump_alerts',
       '快速上涨警报',
@@ -191,7 +195,7 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    _notifications.show(
+    await _notifications.show(
       symbol.hashCode,
       '🚀 $symbol 快速上涨',
       '+${priceChange.toStringAsFixed(2)}% • 当前价格 \$${currentPrice.toStringAsFixed(2)}',

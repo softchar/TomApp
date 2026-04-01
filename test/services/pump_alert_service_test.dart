@@ -9,8 +9,8 @@ void main() {
       service = PumpAlertService();
     });
 
-    tearDown(() {
-      service.stop();
+    tearDown(() async {
+      await service.dispose();
     });
 
     test('should be singleton', () {
