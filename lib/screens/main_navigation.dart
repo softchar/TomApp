@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'funding_screen.dart';
 import 'long_short_screen.dart';
+import 'pump_screen.dart';
 import 'profile_screen.dart';
 
 /// 主导航页面 - 带底部导航栏
@@ -19,6 +20,7 @@ class _MainNavigationState extends State<MainNavigation> {
     const HomeScreen(),
     const FundingScreen(),
     const LongShortScreen(),
+    const PumpScreen(),
     const ProfileScreen(),
   ];
 
@@ -56,6 +58,11 @@ class _MainNavigationState extends State<MainNavigation> {
             icon: Icon(Icons.apps_outlined),
             activeIcon: Icon(Icons.apps),
             label: '多空',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.trending_up_outlined),
+            activeIcon: Icon(Icons.trending_up),
+            label: '暴涨',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),

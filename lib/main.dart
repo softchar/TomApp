@@ -6,6 +6,7 @@ import 'services/popup_alert_service.dart';
 import 'services/long_short_provider.dart';
 import 'services/binance_api_service.dart';
 import 'services/pump_alert_service.dart';
+import 'services/binance_websocket_manager.dart';
 import 'screens/main_navigation.dart';
 
 late final PopupAlertService popupAlertService;
@@ -55,6 +56,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => LongShortProvider()),
         ChangeNotifierProvider(create: (_) => PumpAlertService.instance.store),
+        ChangeNotifierProvider(create: (_) => BinanceWebSocketManager()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {

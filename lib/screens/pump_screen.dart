@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tomapp/models/pump_model.dart';
-import 'package:tomapp/services/pump_alert_service.dart';
+import 'package:tomapp/services/binance_websocket_manager.dart';
 import 'package:tomapp/services/pump_store.dart';
 import 'package:tomapp/services/theme_provider.dart';
 import 'package:tomapp/widgets/pump_item.dart';
@@ -15,16 +15,10 @@ class PumpScreen extends StatefulWidget {
 }
 
 class _PumpScreenState extends State<PumpScreen> {
-  final PumpAlertService _service = PumpAlertService.instance;
-
   @override
   void initState() {
     super.initState();
-    _startService();
-  }
-
-  Future<void> _startService() async {
-    await _service.start();
+    // 在应用启动时已经在 main.dart 中启动了服务
   }
 
   @override
@@ -43,14 +37,10 @@ class _PumpScreenState extends State<PumpScreen> {
         title: const Text('快速上涨'),
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
         actions: [
-          Consumer<PumpAlertService>(
-            builder: (context, service, child) {
-              final state = service.connectionState;
+          Consumer<BinanceWebSocketManager>(
+            builder: (context, wsManager, child) {
+              final state = wsManager.connectionState;
               Color dotColor;
               String statusText;
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 enum WebSocketConnectionState { disconnected, connecting, connected, reconnecting }
@@ -27,7 +28,7 @@ class Ticker {
   }
 }
 
-class BinanceWebSocketManager {
+class BinanceWebSocketManager extends ChangeNotifier {
   static const String _baseUrl = 'wss://fstream.binance.com/ws';
   static const String _tickerStream = '!ticker@arr';
 
@@ -41,13 +42,20 @@ class BinanceWebSocketManager {
   Stream<Ticker> get tickerStream => _tickerController.stream;
   WebSocketConnectionState get connectionState => _connectionState;
 
+  void _setConnectionState(WebSocketConnectionState state) {
+    if (_connectionState != state) {
+      _connectionState = state;
+      notifyListeners();
+    }
+  }
+
   Future<void> connect() async {
     if (_connectionState == WebSocketConnectionState.connected ||
         _connectionState == WebSocketConnectionState.connecting) {
       return;
     }
 
-    _connectionState = WebSocketConnectionState.connecting;
+    _setConnectionState(WebSocketConnectionState.connecting);
 
     try {
       final uri = Uri.parse('$_baseUrl/$_tickerStream');
@@ -62,10 +70,10 @@ class BinanceWebSocketManager {
       );
 
       // Set connected after stream is successfully established
-      _connectionState = WebSocketConnectionState.connected;
+      _setConnectionState(WebSocketConnectionState.connected);
       _reconnectAttempts = 0;
     } catch (e) {
-      _connectionState = WebSocketConnectionState.disconnected;
+      _setConnectionState(WebSocketConnectionState.disconnected);
       _scheduleReconnect();
     }
   }
@@ -74,7 +82,7 @@ class BinanceWebSocketManager {
     _reconnectTimer?.cancel();
     _streamSubscription?.cancel();
     await _channel?.sink.close();
-    _connectionState = WebSocketConnectionState.disconnected;
+    _setConnectionState(WebSocketConnectionState.disconnected);
   }
 
   void _onMessage(dynamic message) {
@@ -93,12 +101,12 @@ class BinanceWebSocketManager {
   }
 
   void _onError(error) {
-    _connectionState = WebSocketConnectionState.disconnected;
+    _setConnectionState(WebSocketConnectionState.disconnected);
     _scheduleReconnect();
   }
 
   void _onDone() {
-    _connectionState = WebSocketConnectionState.disconnected;
+    _setConnectionState(WebSocketConnectionState.disconnected);
     _scheduleReconnect();
   }
 
@@ -106,7 +114,7 @@ class BinanceWebSocketManager {
     _reconnectTimer?.cancel();
 
     final delay = _calculateReconnectDelay();
-    _connectionState = WebSocketConnectionState.reconnecting;
+    _setConnectionState(WebSocketConnectionState.reconnecting);
     _reconnectAttempts++;  // Increment when scheduling, not in timer callback
 
     _reconnectTimer = Timer(delay, () {
