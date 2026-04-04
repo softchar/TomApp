@@ -95,11 +95,17 @@ class _KlineScreenState extends State<KlineScreen> {
   }
 
   Widget _buildSymbolSelector(KlineProvider provider) {
+    // 确保当前交易对在下拉列表中
+    final symbols = [..._commonSymbols];
+    if (!symbols.contains(provider.symbol)) {
+      symbols.add(provider.symbol);
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: DropdownButton<String>(
         value: provider.symbol,
-        items: _commonSymbols.map((symbol) {
+        items: symbols.map((symbol) {
           return DropdownMenuItem(
             value: symbol,
             child: Text(symbol),
