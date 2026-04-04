@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/funding_rate.dart';
 import '../models/long_short_ratio.dart';
+import '../models/kline_data.dart';
 
 /// 资金费率间隔信息
 class _FundingIntervalInfo {
@@ -432,5 +433,76 @@ class BinanceApiService {
 
   void dispose() {
     _client.close();
+  }
+}
+
+/// K线API扩展
+extension KlineApi on BinanceApiService {
+  static const String _klinesEndpoint = '/fapi/v1/klines';
+
+  /// 获取最近N根K线
+  Future<List<dynamic>> getRecentKlines({
+    required String symbol,
+    required String interval,
+    int limit = 500,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        'symbol': symbol,
+        'interval': interval,
+        'limit': limit.toString(),
+      };
+
+      final uri = Uri.parse('${BinanceApiService._baseUrl}$_klinesEndpoint')
+          .replace(queryParameters: queryParams);
+
+      final response = await _client.get(uri).timeout(
+        const Duration(seconds: 30),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as List<dynamic>;
+      } else {
+        throw Exception('K线API请求失败: ${response.statusCode}');
+      }
+    } on TimeoutException {
+      throw Exception('K线请求超时');
+    } catch (e) {
+      throw Exception('获取K线数据失败: $e');
+    }
+  }
+
+  /// 获取指定时间范围的K线数据（支持分页）
+  Future<List<dynamic>> getKlines({
+    required String symbol,
+    required String interval,
+    required DateTime startTime,
+    required DateTime endTime,
+    int limit = 1500,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        'symbol': symbol,
+        'interval': interval,
+        'startTime': startTime.millisecondsSinceEpoch.toString(),
+        'endTime': endTime.millisecondsSinceEpoch.toString(),
+        'limit': limit.toString(),
+      };
+
+      final uri = Uri.parse('${BinanceApiService._baseUrl}$_klinesEndpoint')
+          .replace(queryParameters: queryParams);
+
+      final response = await _client.get(uri).timeout(
+        const Duration(seconds: 30),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as List<dynamic>;
+      } else {
+        throw Exception('K线API请求失败: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('获取K线数据失败: $e');
+    }
   }
 }
