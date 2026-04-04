@@ -51,6 +51,15 @@ class NotificationService {
       },
     );
 
+    // 请求 Android 13+ 通知权限
+    final androidImpl = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImpl != null) {
+      final granted = await androidImpl.requestNotificationsPermission();
+      if (kDebugMode) {
+        print('Android 通知权限请求结果: $granted');
+      }
+    }
+
     _initialized = true;
   }
 

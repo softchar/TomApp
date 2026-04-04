@@ -102,12 +102,20 @@ class _PumpDetector {
 // 后台服务回调 - 必须是顶层函数
 @pragma('vm:entry-point')
 Future<void> callbackDispatcher(ServiceInstance service) async {
+  debugPrint('🔧 callbackDispatcher: 后台服务回调已启动');
+
   final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
   const initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
   const initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
   await notifications.initialize(initializationSettings);
 
+  debugPrint('🔧 callbackDispatcher: 通知插件已初始化');
+
   if (service is AndroidServiceInstance) {
+    // 立即设置为前台服务，确保在后台继续运行
+    service.setAsForegroundService();
+    debugPrint('🔧 callbackDispatcher: 已设置为前台服务');
+
     service.on('setAsForeground').listen((event) {
       service.setAsForegroundService();
     });
@@ -118,12 +126,16 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
   }
 
   service.on('stop').listen((event) {
+    debugPrint('🔧 callbackDispatcher: 收到停止信号');
     service.stopSelf();
   });
 
   final pumpDetector = _PumpDetector();
+  debugPrint('🔧 callbackDispatcher: PumpDetector 已创建，开始定时任务');
 
   Timer.periodic(const Duration(seconds: 30), (timer) async {
+    debugPrint('🔧 callbackDispatcher: 定时器触发 #${timer.tick}');
+
     if (service is AndroidServiceInstance) {
       service.setForegroundNotificationInfo(
         title: '快速上涨检测',
@@ -162,13 +174,17 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
           }
         }
 
+        debugPrint('🔧 callbackDispatcher: 获取到 ${prices.length} 个合约价格');
+
         // 检测快速上涨
         final pumps = pumpDetector.checkAll(prices, DateTime.now());
         if (pumps != null) {
+          debugPrint('🔧 callbackDispatcher: 检测到 ${pumps.length} 个快速上涨');
           for (final entry in pumps.entries) {
             final symbol = entry.key;
             final change = entry.value;
             if (symbol != null) {
+              debugPrint('🚀 检测到快速上涨: $symbol +${change.toStringAsFixed(2)}%');
               await notifications.show(
                 symbol.hashCode,
                 '快速上涨提醒',
@@ -186,9 +202,11 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
             }
           }
         }
+      } else {
+        debugPrint('🔧 callbackDispatcher: API 请求失败，状态码 ${response.statusCode}');
       }
     } catch (e) {
-      // 忽略错误，继续下一次轮询
+      debugPrint('🔧 callbackDispatcher: 获取价格失败: $e');
     }
   });
 }
@@ -223,7 +241,17 @@ void main() async {
   // 初始化并启动后台快速上涨检测服务
   final backgroundService = PumpBackgroundService.instance;
   await backgroundService.initialize(onStart: callbackDispatcher);
+
+  // 启动后台服务
   await backgroundService.start();
+
+  // 验证服务是否正在运行
+  final isRunning = await backgroundService.isRunning;
+  debugPrint('PumpBackgroundService 启动状态: $isRunning');
+
+  if (!isRunning) {
+    debugPrint('警告: 后台服务启动失败，请检查权限配置');
+  }
 
   runApp(const MyApp());
 }

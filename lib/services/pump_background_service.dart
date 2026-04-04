@@ -37,6 +37,14 @@ class PumpBackgroundService {
 
   Future<void> start() async {
     await _service.startService();
+    // 给服务一点时间启动
+    await Future.delayed(const Duration(milliseconds: 500));
+    final running = await isRunning;
+    if (running) {
+      print('✅ PumpBackgroundService 成功启动');
+    } else {
+      print('❌ PumpBackgroundService 启动失败');
+    }
   }
 
   Future<void> stop() async {
