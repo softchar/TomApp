@@ -14,6 +14,7 @@ import 'services/pump_config_service.dart';
 import 'services/pump_repository.dart' show RepositoryFactory;
 import 'services/funding_rate_settings.dart';
 import 'providers/pump_list_provider.dart';
+import 'providers/kline_provider.dart';
 import 'screens/main_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -251,6 +252,9 @@ class MyApp extends StatelessWidget {
             repository: RepositoryFactory.create(),
             config: PumpConfig(),
           ),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => KlineProvider(),
         ),
       ],
       child: Consumer<ThemeProvider>(
