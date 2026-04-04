@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../models/funding_rate.dart';
 import '../services/binance_api_service.dart';
 import '../services/notification_service.dart';
+import '../services/funding_rate_settings.dart';
 
 /// 资金费率数据管理Provider
 class FundingRateProvider with ChangeNotifier {
   final BinanceApiService _apiService;
   final NotificationService _notificationService;
+  final FundingRateSettings _settings;
 
   List<FundingRate> _fundingRates = [];
   List<FundingRate> _filteredRates = [];
@@ -16,18 +18,24 @@ class FundingRateProvider with ChangeNotifier {
   Timer? _updateTimer;
   String _searchQuery = '';
   SortType _sortType = SortType.intervalAsc;
+  bool _isAutoUpdating = false;
 
   FundingRateProvider({
     BinanceApiService? apiService,
     NotificationService? notificationService,
+    FundingRateSettings? settings,
   })  : _apiService = apiService ?? BinanceApiService(),
-        _notificationService = notificationService ?? NotificationService();
+        _notificationService = notificationService ?? NotificationService(),
+        _settings = settings ?? FundingRateSettings() {
+    _settings.addListener(_onSettingsChanged);
+  }
 
   List<FundingRate> get fundingRates => _filteredRates;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   int get rateCount => _filteredRates.length;
   SortType get sortType => _sortType;
+  bool get isAutoUpdating => _isAutoUpdating;
 
   /// 获取资金费率数据
   Future<void> fetchFundingRates() async {
@@ -54,6 +62,9 @@ class FundingRateProvider with ChangeNotifier {
 
   /// 启动定时更新（每1小时更新一次）
   void startPeriodicUpdate() {
+    if (_isAutoUpdating) return;
+    _isAutoUpdating = true;
+
     // 立即获取一次数据
     fetchFundingRates();
 
@@ -63,12 +74,25 @@ class FundingRateProvider with ChangeNotifier {
       const Duration(hours: 1),
       (_) => fetchFundingRates(),
     );
+    notifyListeners();
   }
 
   /// 停止定时更新
   void stopPeriodicUpdate() {
+    if (!_isAutoUpdating) return;
+    _isAutoUpdating = false;
     _updateTimer?.cancel();
     _updateTimer = null;
+    notifyListeners();
+  }
+
+  /// 设置变更回调
+  void _onSettingsChanged() {
+    if (_settings.autoUpdateEnabled) {
+      startPeriodicUpdate();
+    } else {
+      stopPeriodicUpdate();
+    }
   }
 
   /// 搜索过滤

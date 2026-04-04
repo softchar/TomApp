@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'home_screen.dart';
 import 'funding_screen.dart';
 import 'long_short_screen.dart';
 import 'pump_screen.dart';
 import 'profile_screen.dart';
+import '../services/funding_rate_provider.dart';
+import '../services/funding_rate_settings.dart';
 
 /// 主导航页面 - 带底部导航栏
 class MainNavigation extends StatefulWidget {
@@ -23,6 +26,24 @@ class _MainNavigationState extends State<MainNavigation> {
     const PumpScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // 初始化费率设置并启动自动更新
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initFundingRateUpdate();
+    });
+  }
+
+  Future<void> _initFundingRateUpdate() async {
+    final settings = context.read<FundingRateSettings>();
+    await settings.load();
+    if (!mounted) return;
+    if (settings.autoUpdateEnabled) {
+      context.read<FundingRateProvider>().startPeriodicUpdate();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,5 +93,16 @@ class _MainNavigationState extends State<MainNavigation> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // 停止费率自动更新
+    try {
+      context.read<FundingRateProvider>().stopPeriodicUpdate();
+    } catch (_) {
+      // Provider 可能未初始化，忽略错误
+    }
+    super.dispose();
   }
 }

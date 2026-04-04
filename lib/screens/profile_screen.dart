@@ -4,6 +4,8 @@ import '../main.dart' show popupAlertService;
 import '../services/theme_provider.dart';
 import '../services/notification_service.dart';
 import '../services/binance_api_service.dart';
+import '../services/funding_rate_settings.dart';
+import '../services/funding_rate_provider.dart';
 
 /// 我的页面
 class ProfileScreen extends StatefulWidget {
@@ -70,6 +72,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () => themeProvider.setSystemMode(),
                     ),
                   ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 32),
+          // 费率自动更新设置
+          _buildSectionHeader('费率设置'),
+          Consumer<FundingRateSettings>(
+            builder: (context, settings, child) {
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: SwitchListTile(
+                  title: const Text('自动更新费率'),
+                  subtitle: Text(settings.autoUpdateEnabled ? '每小时自动更新' : '已关闭'),
+                  value: settings.autoUpdateEnabled,
+                  onChanged: (value) async {
+                    final provider = context.read<FundingRateProvider>();
+                    await settings.setAutoUpdateEnabled(value);
+                    if (value) {
+                      provider.startPeriodicUpdate();
+                    } else {
+                      provider.stopPeriodicUpdate();
+                    }
+                  },
                 ),
               );
             },

@@ -7,7 +7,11 @@
       "Bash(git log:*)",
       "Bash(git commit:*)",
       "Bash(flutter test:*)",
-      "Bash(flutter analyze:*)"
+      "Bash(flutter analyze:*)",
+      "Bash(flutter devices:*)",
+      "Bash(flutter run:*)",
+      "Bash(flutter doctor:*)",
+      "Bash(\"C:\\\\Users\\\\softc\\\\AppData\\\\Local\\\\Android\\\\sdk\\\\cmdline-tools\\\\latest\\\\bin\\\\sdkmanager.bat\" --licenses:*)"
     ]
   }
 }

@@ -12,6 +12,7 @@ import 'services/binance_websocket_manager.dart';
 import 'services/pump_analytics_service.dart';
 import 'services/pump_config_service.dart';
 import 'services/pump_repository.dart' show RepositoryFactory;
+import 'services/funding_rate_settings.dart';
 import 'providers/pump_list_provider.dart';
 import 'screens/main_navigation.dart';
 import 'dart:async';
@@ -233,7 +234,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => FundingRateProvider()),
+        ChangeNotifierProvider(create: (_) => FundingRateSettings()),
+        ChangeNotifierProxyProvider<FundingRateSettings, FundingRateProvider>(
+          create: (_) => FundingRateProvider(),
+          update: (_, settings, previous) =>
+              previous ?? FundingRateProvider(settings: settings),
+        ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => LongShortProvider()),
         ChangeNotifierProvider(create: (_) => PumpAlertService.instance.store),
