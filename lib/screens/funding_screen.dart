@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/funding_rate_provider.dart';
 import '../widgets/funding_rate_item.dart';
+import 'kline_screen.dart';
 
 /// 资费页面 - 显示资金费率列表（紧凑布局）
 class FundingScreen extends StatefulWidget {
@@ -217,87 +218,11 @@ class _FundingScreenState extends State<FundingScreen> {
   }
 
   void _showRateDetails(BuildContext context, dynamic rate) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
-        return Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 顶部把手
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Text(
-                rate.symbol,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _detailRow('资金费率', rate.fundingRatePercent),
-              const SizedBox(height: 12),
-              _detailRow('标记价格', rate.formattedMarkPrice),
-              const SizedBox(height: 12),
-              _detailRow('指数价格', rate.indexPrice.toString()),
-              const SizedBox(height: 12),
-              _detailRow(
-                '下次费率时间',
-                rate.nextFundingTime.toString().split('.')[0],
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('关闭'),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _detailRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            color: colorScheme.onSurface,
-          ),
-        ),
-      ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => KlineScreen(symbol: rate.symbol),
+      ),
     );
   }
 }
