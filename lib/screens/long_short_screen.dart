@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/long_short_ratio.dart';
 import '../services/long_short_provider.dart';
+import 'kline_screen.dart';
 
 /// 大户多空比页面
 class LongShortScreen extends StatefulWidget {
@@ -102,7 +103,7 @@ class _LongShortScreenState extends State<LongShortScreen> {
         }
 
         final ratio = provider.ratios[index];
-        return _buildCompactRatioCard(ratio);
+        return _buildCompactRatioCard(ratio, context);
       },
     );
   }
@@ -138,138 +139,148 @@ class _LongShortScreenState extends State<LongShortScreen> {
     );
   }
 
-  Widget _buildCompactRatioCard(LongShortRatio ratio) {
+  Widget _buildCompactRatioCard(LongShortRatio ratio, BuildContext context) {
     final shortPercent = (ratio.shortAccount * 100).toStringAsFixed(1);
     final longPercent = (ratio.longAccount * 100).toStringAsFixed(1);
     final interval = ratio.fundingIntervalHours == 1 ? '1h' : ratio.fundingIntervalHours == 4 ? '4h' : '${ratio.fundingIntervalHours}h';
 
     return Card(
       margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            // 交易对 + 资费间隔
-            Expanded(
-              flex: 2,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ratio.symbol.replaceAll('USDT', ''),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => KlineScreen(symbol: ratio.symbol),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // 交易对 + 资费间隔
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ratio.symbol.replaceAll('USDT', ''),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      // 资费间隔标签
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: interval == '1h'
-                              ? Colors.orange.withOpacity(0.2)
-                              : interval == '4h'
-                                  ? Colors.blue.withOpacity(0.2)
-                                  : Colors.grey.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          interval,
-                          style: TextStyle(
-                            fontSize: 11,
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        // 资费间隔标签
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
                             color: interval == '1h'
-                                ? Colors.orange
+                                ? Colors.orange.withOpacity(0.2)
                                 : interval == '4h'
-                                    ? Colors.blue
-                                    : Colors.grey,
-                            fontWeight: FontWeight.w600,
+                                    ? Colors.blue.withOpacity(0.2)
+                                    : Colors.grey.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            interval,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: interval == '1h'
+                                  ? Colors.orange
+                                  : interval == '4h'
+                                      ? Colors.blue
+                                      : Colors.grey,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '空$shortPercent%',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.deepPurple.shade400,
+                        const SizedBox(width: 6),
+                        Text(
+                          '空$shortPercent%',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.deepPurple.shade400,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // 空头进度条（紫色）
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      const Text('空', style: TextStyle(fontSize: 11, color: Colors.deepPurple)),
-                      const SizedBox(width: 4),
-                      Text(
-                        shortPercent,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
-                    ],
-                  ),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: ratio.shortAccount,
-                      backgroundColor: Colors.deepPurple.withOpacity(0.1),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.deepPurple),
-                      minHeight: 6,
+                      ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            // 多头进度条（蓝色）
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      const Text('多', style: TextStyle(fontSize: 11, color: Colors.lightBlue)),
-                      const SizedBox(width: 4),
-                      Text(
-                        longPercent,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.lightBlue,
+              // 空头进度条（紫色）
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Text('空', style: TextStyle(fontSize: 11, color: Colors.deepPurple)),
+                        const SizedBox(width: 4),
+                        Text(
+                          shortPercent,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepPurple,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: ratio.longAccount,
-                      backgroundColor: Colors.lightBlue.withOpacity(0.1),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.lightBlue),
-                      minHeight: 6,
+                      ],
                     ),
-                  ),
-                ],
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: ratio.shortAccount,
+                        backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.deepPurple),
+                        minHeight: 6,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              // 多头进度条（蓝色）
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Text('多', style: TextStyle(fontSize: 11, color: Colors.lightBlue)),
+                        const SizedBox(width: 4),
+                        Text(
+                          longPercent,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.lightBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: ratio.longAccount,
+                        backgroundColor: Colors.lightBlue.withOpacity(0.1),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.lightBlue),
+                        minHeight: 6,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
