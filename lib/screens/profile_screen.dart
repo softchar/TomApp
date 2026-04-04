@@ -5,6 +5,8 @@ import '../services/theme_provider.dart';
 import '../services/notification_service.dart';
 import '../services/binance_api_service.dart';
 import '../services/funding_rate_settings.dart';
+import '../services/kline_cache_service.dart';
+import '../providers/kline_provider.dart';
 
 /// 我的页面
 class ProfileScreen extends StatefulWidget {
@@ -186,6 +188,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          // K线缓存管理部分
+          _buildSectionHeader('K线缓存管理'),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.storage),
+                  title: const Text('缓存大小'),
+                  trailing: Consumer<KlineProvider>(
+                    builder: (context, provider, child) {
+                      return FutureBuilder<int>(
+                        future: KlineCacheService().getCacheSize(),
+                        builder: (context, snapshot) {
+                          final size = snapshot.data ?? 0;
+                          final sizeMB = (size / (1024 * 1024)).toStringAsFixed(2);
+                          return Text('$sizeMB MB');
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.cleaning_services),
+                  title: const Text('清除缓存'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    await KlineCacheService().clearAll();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('缓存已清除')),
+                      );
+                    }
+                  },
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 32),
