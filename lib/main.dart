@@ -236,7 +236,9 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => FundingRateSettings()),
         ChangeNotifierProxyProvider<FundingRateSettings, FundingRateProvider>(
-          create: (_) => FundingRateProvider(),
+          create: (context) => FundingRateProvider(
+            settings: context.read<FundingRateSettings>(),
+          ),
           update: (_, settings, previous) =>
               previous ?? FundingRateProvider(settings: settings),
         ),

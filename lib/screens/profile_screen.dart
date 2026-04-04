@@ -5,7 +5,6 @@ import '../services/theme_provider.dart';
 import '../services/notification_service.dart';
 import '../services/binance_api_service.dart';
 import '../services/funding_rate_settings.dart';
-import '../services/funding_rate_provider.dart';
 
 /// 我的页面
 class ProfileScreen extends StatefulWidget {
@@ -88,13 +87,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   subtitle: Text(settings.autoUpdateEnabled ? '每小时自动更新' : '已关闭'),
                   value: settings.autoUpdateEnabled,
                   onChanged: (value) async {
-                    final provider = context.read<FundingRateProvider>();
+                    // 只更新设置，FundingRateProvider 会通过监听器自动响应
                     await settings.setAutoUpdateEnabled(value);
-                    if (value) {
-                      provider.startPeriodicUpdate();
-                    } else {
-                      provider.stopPeriodicUpdate();
-                    }
                   },
                 ),
               );

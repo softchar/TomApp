@@ -17,9 +17,13 @@ class _FundingScreenState extends State<FundingScreen> {
   @override
   void initState() {
     super.initState();
-    // 启动定时更新
+    // 仅获取一次数据，不启动定时更新（定时更新由设置控制）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<FundingRateProvider>().startPeriodicUpdate();
+      final provider = context.read<FundingRateProvider>();
+      // 只在还没有数据时才获取
+      if (provider.rateCount == 0) {
+        provider.fetchFundingRates();
+      }
     });
   }
 
