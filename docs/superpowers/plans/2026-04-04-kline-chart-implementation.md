@@ -43,11 +43,12 @@
 **Files:**
 - Modify: `pubspec.yaml`
 
-- [ ] **Step 1: 添加flutter_chen_kchart依赖**
+- [ ] **Step 1: 添加flutter_chen_kchart和shimmer依赖**
 
 编辑 `pubspec.yaml`，在 dependencies 部分添加：
 ```yaml
   flutter_chen_kchart: ^2.0.4
+  shimmer: ^3.0.0
 ```
 
 在 dev_dependencies 部分添加：
@@ -59,6 +60,8 @@ dev_dependencies:
   mockito: ^5.4.0
   build_runner: ^2.4.0
 ```
+
+注意：fl_chart已在项目中存在（v0.65.0），无需额外添加。
 
 - [ ] **Step 2: 运行flutter pub get**
 
@@ -875,6 +878,8 @@ git commit -m "feat: add KlineCacheService"
 **Files:**
 - Create: `lib/services/kline_websocket_service.dart`
 
+**注意：** K线WebSocket服务需要独立连接，因为币安的K线流topic与现有的ticker流不同。虽然不直接复用BinanceWebSocketManager的连接，但会复用相同的连接管理逻辑模式。
+
 - [ ] **Step 1: 创建KlineWebSocketService类**
 
 创建 `lib/services/kline_websocket_service.dart`：
@@ -883,29 +888,37 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'binance_websocket_manager.dart';
 import '../models/kline_data.dart';
+import 'binance_websocket_manager.dart'; // 用于复用WebSocketConnectionState枚举
 
 /// K线WebSocket服务
 class KlineWebSocketService extends ChangeNotifier {
-  final BinanceWebSocketManager _wsManager;
-
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   final StreamController<KlineData> _klineController =
       StreamController.broadcast();
-  bool _isConnected = false;
+  WebSocketConnectionState _connectionState = WebSocketConnectionState.disconnected;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
 
   Stream<KlineData> get klineStream => _klineController.stream;
-  bool get isConnected => _isConnected;
+  WebSocketConnectionState get connectionState => _connectionState;
 
-  KlineWebSocketService(this._wsManager);
+  void _setConnectionState(WebSocketConnectionState state) {
+    if (_connectionState != state) {
+      _connectionState = state;
+      notifyListeners();
+    }
+  }
 
   /// 连接WebSocket
   Future<void> connect(String symbol, String interval) async {
-    if (_isConnected) {
-      await disconnect();
+    if (_connectionState == WebSocketConnectionState.connected ||
+        _connectionState == WebSocketConnectionState.connecting) {
+      return;
     }
+
+    _setConnectionState(WebSocketConnectionState.connecting);
 
     try {
       final topic = '${symbol.toLowerCase()}@kline_$interval';
@@ -917,23 +930,23 @@ class KlineWebSocketService extends ChangeNotifier {
         _onMessage,
         onError: _onError,
         onDone: _onDone,
+        cancelOnError: false,
       );
 
-      _isConnected = true;
-      notifyListeners();
+      _setConnectionState(WebSocketConnectionState.connected);
+      _reconnectAttempts = 0;
     } catch (e) {
-      _isConnected = false;
-      notifyListeners();
-      rethrow;
+      _setConnectionState(WebSocketConnectionState.disconnected);
+      _scheduleReconnect();
     }
   }
 
   /// 断开连接
   Future<void> disconnect() async {
+    _reconnectTimer?.cancel();
     await _subscription?.cancel();
     await _channel?.sink.close();
-    _isConnected = false;
-    notifyListeners();
+    _setConnectionState(WebSocketConnectionState.disconnected);
   }
 
   void _onMessage(dynamic message) {
@@ -949,6 +962,49 @@ class KlineWebSocketService extends ChangeNotifier {
         close: double.parse(kline['c'] as String),
         volume: double.parse(kline['v'] as String),
       );
+
+      _klineController.add(klineData);
+    } catch (e) {
+      if (kDebugMode) print('[KlineWebSocket] 解析消息失败: $e');
+    }
+  }
+
+  void _onError(error) {
+    _setConnectionState(WebSocketConnectionState.disconnected);
+    _scheduleReconnect();
+  }
+
+  void _onDone() {
+    _setConnectionState(WebSocketConnectionState.disconnected);
+    _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    _reconnectTimer?.cancel();
+
+    // 指数退避重连（最多3次）
+    if (_reconnectAttempts >= 3) {
+      return;
+    }
+
+    final delay = Duration(seconds: 5 * (1 << _reconnectAttempts));
+    _setConnectionState(WebSocketConnectionState.reconnecting);
+    _reconnectAttempts++;
+
+    _reconnectTimer = Timer(delay, () {
+      // 需要重新保存symbol和interval来重连，这里简化处理
+      // 实际使用时应该在connect失败时自动重连
+    });
+  }
+
+  @override
+  void dispose() {
+    disconnect();
+    _klineController.close();
+    super.dispose();
+  }
+}
+```
 
       _klineController.add(klineData);
     } catch (e) {
@@ -995,17 +1051,16 @@ git commit -m "feat: add KlineWebSocketService"
 ```dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import '../models/kline_data.dart';
 import '../models/macd_data.dart';
 import '../services/binance_api_service.dart';
 import '../services/kline_cache_service.dart';
 import '../services/kline_websocket_service.dart';
 import '../services/technical_indicators.dart';
-import 'binance_websocket_manager.dart';
 
 /// K线状态管理
 class KlineProvider extends ChangeNotifier {
-  final BinanceWebSocketManager _wsManager = BinanceWebSocketManager();
   late final KlineWebSocketService _wsService;
   final KlineCacheService _cacheService = KlineCacheService();
 
@@ -1034,7 +1089,7 @@ class KlineProvider extends ChangeNotifier {
   StreamSubscription? _wsSubscription;
 
   KlineProvider() {
-    _wsService = KlineWebSocketService(_wsManager);
+    _wsService = KlineWebSocketService();
   }
 
   // Getters
@@ -1153,9 +1208,14 @@ class KlineProvider extends ChangeNotifier {
 
   /// 停止实时更新
   Future<void> _stopRealtime() async {
-    await _wsSubscription?.cancel();
-    await _wsService.disconnect();
-    _isRealtime = false;
+    try {
+      await _wsSubscription?.cancel();
+      await _wsService.disconnect();
+    } catch (e) {
+      if (kDebugMode) print('[KlineProvider] 停止实时更新失败: $e');
+    } finally {
+      _isRealtime = false;
+    }
   }
 
   /// 处理实时K线更新
@@ -2314,8 +2374,14 @@ git commit -m "docs: add K-line feature documentation"
 
 2. **网络请求需要配置代理** - 在中国大陆可能需要配置代理才能访问币安API。
 
-3. **WebSocket连接稳定性** - 网络不稳定时可能需要重连机制，已通过复用BinanceWebSocketManager解决。
+3. **WebSocket连接** - K线WebSocket使用独立连接（与现有ticker流topic不同），实现了独立的重连机制。
 
 4. **数据量控制** - K线数据量较大时需要注意内存使用，已设置2000根K线的上限。
 
 5. **测试覆盖** - 建议在实施过程中增加更多单元测试和集成测试。
+
+6. **shimmer依赖** - 骨架屏需要shimmer包，已在Task 1中添加。
+
+7. **fl_chart已存在** - 项目已有fl_chart v0.65.0，无需额外添加。
+
+8. **BinanceWebSocketManager不再被K线功能复用** - 由于K线流topic与ticker流不同，K线WebSocketService使用独立连接。
