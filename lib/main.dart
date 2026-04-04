@@ -5,11 +5,173 @@ import 'services/theme_provider.dart';
 import 'services/popup_alert_service.dart';
 import 'services/long_short_provider.dart';
 import 'services/binance_api_service.dart';
+import 'services/pump_background_service.dart';
 import 'services/pump_alert_service.dart';
 import 'services/binance_websocket_manager.dart';
 import 'screens/main_navigation.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_background_service_android/flutter_background_service_android.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 late final PopupAlertService popupAlertService;
+
+// Pump检测器 (简化版用于后台服务)
+class _PricePoint {
+  final double price;
+  final DateTime timestamp;
+  _PricePoint({required this.price, required this.timestamp});
+}
+
+class _PumpDetector {
+  final double threshold = 2.0; // 2% 涨幅
+  final int cooldownMinutes = 1;
+  final Map<String, List<_PricePoint>> _priceHistory = {};
+  final Map<String, DateTime> _lastNotificationTime = {};
+
+  void addPricePoint(String symbol, double price, DateTime timestamp) {
+    _priceHistory.putIfAbsent(symbol, () => []);
+    _priceHistory[symbol]!.add(_PricePoint(price: price, timestamp: timestamp));
+    _cleanupOldPoints(symbol, timestamp);
+  }
+
+  Map<String?, double>? checkAll(Map<String, double> currentPrices, DateTime timestamp) {
+    final Map<String?, double> pumps = {};
+
+    for (final entry in currentPrices.entries) {
+      final symbol = entry.key;
+      final price = entry.value;
+
+      if (_isInCooldown(symbol, timestamp)) {
+        continue;
+      }
+
+      addPricePoint(symbol, price, timestamp);
+
+      final change = _calculate1MinChange(symbol, timestamp);
+      if (change != null && change > threshold) {
+        pumps[symbol] = change;
+        _lastNotificationTime[symbol] = timestamp;
+      }
+    }
+
+    return pumps.isEmpty ? null : pumps;
+  }
+
+  double? _calculate1MinChange(String symbol, DateTime currentTime) {
+    final points = _priceHistory[symbol];
+    if (points == null || points.length < 2) return null;
+
+    final oneMinuteAgo = currentTime.subtract(const Duration(minutes: 1));
+    _PricePoint? baselinePoint;
+
+    for (final point in points) {
+      if (point.timestamp.isBefore(oneMinuteAgo) || point.timestamp.isAtSameMomentAs(oneMinuteAgo)) {
+        baselinePoint = point;
+      } else {
+        break;
+      }
+    }
+
+    if (baselinePoint == null) return null;
+
+    return ((points.last.price - baselinePoint.price) / baselinePoint.price) * 100;
+  }
+
+  bool _isInCooldown(String symbol, DateTime currentTime) {
+    final lastNotified = _lastNotificationTime[symbol];
+    if (lastNotified == null) return false;
+    return currentTime.difference(lastNotified).inMinutes < cooldownMinutes;
+  }
+
+  void _cleanupOldPoints(String symbol, DateTime currentTime) {
+    final cutoff = currentTime.subtract(const Duration(minutes: 2));
+    _priceHistory[symbol]!.removeWhere((p) => p.timestamp.isBefore(cutoff));
+  }
+}
+
+// 后台服务回调 - 必须是顶层函数
+@pragma('vm:entry-point')
+Future<void> callbackDispatcher(ServiceInstance service) async {
+  final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
+  const initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+  await notifications.initialize(initializationSettings);
+
+  if (service is AndroidServiceInstance) {
+    service.on('setAsForeground').listen((event) {
+      service.setAsForegroundService();
+    });
+
+    service.on('setAsBackground').listen((event) {
+      service.setAsBackgroundService();
+    });
+  }
+
+  service.on('stop').listen((event) {
+    service.stopSelf();
+  });
+
+  final pumpDetector = _PumpDetector();
+
+  Timer.periodic(const Duration(seconds: 30), (timer) async {
+    if (service is AndroidServiceInstance) {
+      service.setForegroundNotificationInfo(
+        title: '快速上涨检测',
+        content: '后台服务运行中... ${DateTime.now().toIso8601String().substring(11, 19)}',
+      );
+    }
+
+    // HTTP 轮询获取所有合约价格
+    try {
+      final response = await http.get(
+        Uri.parse('${BinanceApiService.currentBaseUrl}/fapi/v1/ticker/price'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        final Map<String, double> prices = {};
+
+        for (final item in data) {
+          final symbol = item['symbol'] as String?;
+          final priceStr = item['price'] as String?;
+          if (symbol != null && priceStr != null && symbol.endsWith('USDT')) {
+            prices[symbol] = double.tryParse(priceStr) ?? 0.0;
+          }
+        }
+
+        // 检测快速上涨
+        final pumps = pumpDetector.checkAll(prices, DateTime.now());
+        if (pumps != null) {
+          for (final entry in pumps.entries) {
+            final symbol = entry.key;
+            final change = entry.value;
+            if (symbol != null) {
+              await notifications.show(
+                symbol.hashCode,
+                '快速上涨提醒',
+                '$symbol 快速上涨 ${change.toStringAsFixed(2)}%',
+                const NotificationDetails(
+                  android: AndroidNotificationDetails(
+                    'pump_alerts',
+                    '快速上涨提醒',
+                    channelDescription: '检测到币种快速上涨',
+                    importance: Importance.high,
+                    priority: Priority.high,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // 忽略错误，继续下一次轮询
+    }
+  });
+}
 
 // ============================================
 // API 配置区域
@@ -38,9 +200,10 @@ void main() async {
   popupAlertService = PopupAlertService();
   await popupAlertService.initialize();
 
-  // 启动快速上涨检测服务
-  final pumpService = PumpAlertService.instance;
-  await pumpService.start();
+  // 初始化并启动后台快速上涨检测服务
+  final backgroundService = PumpBackgroundService.instance;
+  await backgroundService.initialize(onStart: callbackDispatcher);
+  await backgroundService.start();
 
   runApp(const MyApp());
 }

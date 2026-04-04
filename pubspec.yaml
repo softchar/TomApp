@@ -16,6 +16,7 @@ dependencies:
   flutter_local_notifications: ^17.2.3
   timezone: ^0.9.4
   web_socket_channel: ^2.4.0
+  flutter_background_service: ^5.0.10
 
 dev_dependencies:
   flutter_test:
