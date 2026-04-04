@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 import 'services/funding_rate_provider.dart';
 import 'services/theme_provider.dart';
 import 'services/popup_alert_service.dart';
@@ -8,6 +9,9 @@ import 'services/binance_api_service.dart';
 import 'services/pump_background_service.dart';
 import 'services/pump_alert_service.dart';
 import 'services/binance_websocket_manager.dart';
+import 'services/pump_analytics_service.dart';
+import 'services/pump_config_service.dart';
+import 'services/pump_repository.dart' show RepositoryFactory;
 import 'screens/main_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -122,6 +126,19 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
         title: '快速上涨检测',
         content: '后台服务运行中... ${DateTime.now().toIso8601String().substring(11, 19)}',
       );
+    }
+
+    // 每 5 个周期（约 2.5 分钟）执行一次回撤分析
+    if (timer.tick % 5 == 0) {
+      try {
+        final analytics = PumpAnalyticsService(
+          repository: RepositoryFactory.create(),
+          config: PumpConfig(),
+        );
+        await analytics.analyzePullbacks();
+      } catch (e) {
+        debugPrint('回撤分析失败: $e');
+      }
     }
 
     // HTTP 轮询获取所有合约价格
