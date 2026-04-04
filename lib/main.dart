@@ -12,6 +12,7 @@ import 'services/binance_websocket_manager.dart';
 import 'services/pump_analytics_service.dart';
 import 'services/pump_config_service.dart';
 import 'services/pump_repository.dart' show RepositoryFactory;
+import 'providers/pump_list_provider.dart';
 import 'screens/main_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -237,6 +238,12 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LongShortProvider()),
         ChangeNotifierProvider(create: (_) => PumpAlertService.instance.store),
         ChangeNotifierProvider(create: (_) => BinanceWebSocketManager()),
+        ChangeNotifierProvider(
+          create: (_) => PumpListProvider(
+            repository: RepositoryFactory.create(),
+            config: PumpConfig(),
+          ),
+        ),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
