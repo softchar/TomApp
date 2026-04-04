@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:tomapp/models/pump_model.dart';
+import 'package:tomapp/models/pump_history_model.dart';
 import 'package:tomapp/services/binance_websocket_manager.dart';
 import 'package:tomapp/services/pump_detector.dart';
 import 'package:tomapp/services/pump_store.dart';
 import 'package:tomapp/services/notification_service.dart';
+import 'package:tomapp/services/pump_repository.dart';
+import 'package:tomapp/services/pump_config_service.dart';
 
 class PumpAlertService {
   static final PumpAlertService _instance = PumpAlertService._internal();
@@ -14,9 +18,12 @@ class PumpAlertService {
   PumpAlertService._internal();
 
   final BinanceWebSocketManager _wsManager = BinanceWebSocketManager();
-  final PumpDetector _detector = PumpDetector(threshold: 2.0, cooldownMinutes: 1);
+  PumpDetector? _detector;
   final PumpStore _store = PumpStore();
   final NotificationService _notificationService = NotificationService();
+
+  late PumpRepository _repository;
+  final PumpConfig _config = PumpConfig();
 
   StreamSubscription? _tickerSubscription;
   bool _isRunning = false;
@@ -25,8 +32,21 @@ class PumpAlertService {
   PumpStore get store => _store;
   WebSocketConnectionState get connectionState => _wsManager.connectionState;
 
+  /// 初始化服务
+  Future<void> initialize() async {
+    await _config.load();
+    _repository = RepositoryFactory.create();
+
+    _detector = PumpDetector(
+      config: _config,
+      repository: _repository,
+    );
+  }
+
   Future<void> start() async {
     if (_isRunning) return;
+
+    await initialize();
 
     try {
       // 连接 WebSocket
@@ -38,7 +58,6 @@ class PumpAlertService {
       // 初始化通知服务
       await _notificationService.initialize();
 
-      // Only set running after successful initialization
       _isRunning = true;
     } catch (e) {
       _isRunning = false;
@@ -61,12 +80,18 @@ class PumpAlertService {
       return;
     }
 
-    // 检测快速上涨
-    final pump = _detector.check(
-      ticker.symbol,
-      ticker.price,
-      ticker.timestamp,
-    );
+    // 异步检测快速上涨
+    _checkPump(ticker.symbol, ticker.price, ticker.timestamp);
+  }
+
+  Future<void> _checkPump(
+    String symbol,
+    double price,
+    DateTime timestamp,
+  ) async {
+    if (_detector == null) return;
+
+    final pump = await _detector!.check(symbol, price, timestamp);
 
     if (pump != null) {
       _handlePump(pump);
@@ -74,8 +99,15 @@ class PumpAlertService {
   }
 
   void _handlePump(PumpModel pump) {
-    // 存入 store
+    // 存入 store (内存缓存)
     _store.addPump(pump);
+
+    // 存入数据库
+    final historyModel = PumpHistoryModel.fromPumpModel(
+      pump,
+      strategyType: _detector?.getStrategyTypeName() ?? 'Unknown',
+    );
+    _repository.save(historyModel);
 
     // 发送通知
     _notificationService.showPumpNotification(
