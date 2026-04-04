@@ -1,11 +1,13 @@
 // lib/screens/pump_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:tomapp/models/pump_model.dart';
-import 'package:tomapp/services/binance_websocket_manager.dart';
-import 'package:tomapp/services/pump_store.dart';
+import 'package:tomapp/providers/pump_list_provider.dart';
+import 'package:tomapp/services/pump_repository.dart';
+import 'package:tomapp/services/pump_config_service.dart';
 import 'package:tomapp/services/theme_provider.dart';
-import 'package:tomapp/widgets/pump_item.dart';
+import 'package:tomapp/services/binance_websocket_manager.dart';
+import 'package:tomapp/widgets/pump_history_item.dart';
+import 'package:tomapp/screens/pump_detail_screen.dart';
 
 class PumpScreen extends StatefulWidget {
   const PumpScreen({super.key});
@@ -15,15 +17,34 @@ class PumpScreen extends StatefulWidget {
 }
 
 class _PumpScreenState extends State<PumpScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
-    // 在应用启动时已经在 main.dart 中启动了服务
+
+    // 初始加载数据
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PumpListProvider>().load();
+    });
+
+    // 监听滚动，加载更多
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      context.read<PumpListProvider>().loadMore();
+    }
   }
 
   @override
@@ -84,42 +105,157 @@ class _PumpScreenState extends State<PumpScreen> {
               );
             },
           ),
-        ],
-      ),
-      body: Consumer<PumpStore>(
-        builder: (context, store, child) {
-          final pumps = store.pumps;
-
-          if (pumps.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.trending_up,
-                    size: 64,
-                    color: isDark ? Colors.grey[700] : Colors.grey[300],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '暂无快速上涨记录',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: isDark ? Colors.grey[500] : Colors.grey[400],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: pumps.length,
-            itemBuilder: (context, index) {
-              final pump = pumps[pumps.length - 1 - index];
-              return PumpItem(pump: pump);
+          PopupMenuButton<PumpListSort>(
+            icon: const Icon(Icons.sort),
+            onSelected: (sort) {
+              context.read<PumpListProvider>().setSortType(sort);
             },
-          );
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: PumpListSort.timeDesc,
+                child: Text('最新优先'),
+              ),
+              const PopupMenuItem(
+                value: PumpListSort.timeAsc,
+                child: Text('最早优先'),
+              ),
+              const PopupMenuItem(
+                value: PumpListSort.changeDesc,
+                child: Text('涨幅最高'),
+              ),
+              const PopupMenuItem(
+                value: PumpListSort.changeAsc,
+                child: Text('涨幅最低'),
+              ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '搜索币种...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          context.read<PumpListProvider>().setSearchQuery('');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                filled: true,
+                fillColor: isDark
+                    ? const Color(0xFF2C2C2C)
+                    : Colors.grey[200],
+                isDense: true,
+              ),
+              onChanged: (value) {
+                context.read<PumpListProvider>().setSearchQuery(value);
+              },
+            ),
+          ),
+        ),
+      ),
+      body: Consumer<PumpListProvider>(
+        builder: (context, provider, child) {
+          final state = provider.state;
+
+          switch (state.status) {
+            case PumpListStatus.initial:
+            case PumpListStatus.loading:
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+
+            case PumpListStatus.error:
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: isDark ? Colors.red[400] : Colors.red[700],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      state.errorMessage ?? '加载失败',
+                      style: TextStyle(
+                        color: isDark ? Colors.red[400] : Colors.red[700],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () => provider.load(refresh: true),
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              );
+
+            case PumpListStatus.empty:
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.trending_up,
+                      size: 64,
+                      color: isDark ? Colors.grey[700] : Colors.grey[300],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '暂无快速上涨记录',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isDark ? Colors.grey[500] : Colors.grey[400],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+            case PumpListStatus.loaded:
+              return RefreshIndicator(
+                onRefresh: () => provider.load(refresh: true),
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: state.pumps.length + (state.hasMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index >= state.pumps.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+
+                    final pump = state.pumps[index];
+                    return PumpHistoryItem(
+                      pump: pump,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PumpDetailScreen(pump: pump),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+          }
         },
       ),
     );
