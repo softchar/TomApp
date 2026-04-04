@@ -501,6 +501,8 @@ extension KlineApi on BinanceApiService {
       } else {
         throw Exception('K线API请求失败: ${response.statusCode}');
       }
+    } on TimeoutException {
+      throw Exception('K线请求超时');
     } catch (e) {
       throw Exception('获取K线数据失败: $e');
     }
