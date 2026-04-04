@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/funding_rate.dart';
 import '../models/long_short_ratio.dart';
-import '../models/kline_data.dart';
 
 /// 资金费率间隔信息
 class _FundingIntervalInfo {
