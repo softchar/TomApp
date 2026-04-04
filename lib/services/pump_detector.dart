@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-import 'dart:math';
 import 'package:tomapp/models/pump_model.dart';
 import 'package:tomapp/services/pump_config_service.dart';
 import 'package:tomapp/services/pump_repository.dart';
@@ -159,7 +157,7 @@ class PumpDetector {
 
   void _cleanupInactiveSymbols() {
     // 清理超过 5 分钟没有更新的币种数据
-    final cutoff = DateTime.now().subtract(Duration(minutes: 5));
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
     _priceHistory.removeWhere((symbol, points) {
       if (points.isEmpty) return true;
       return points.last.timestamp.isBefore(cutoff);

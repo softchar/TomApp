@@ -2,8 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tomapp/providers/pump_list_provider.dart';
-import 'package:tomapp/services/pump_repository.dart';
-import 'package:tomapp/services/pump_config_service.dart';
 import 'package:tomapp/services/theme_provider.dart';
 import 'package:tomapp/services/binance_websocket_manager.dart';
 import 'package:tomapp/widgets/pump_history_item.dart';

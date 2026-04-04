@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tomapp/models/pump_history_model.dart';
-import 'package:tomapp/providers/pump_list_provider.dart';
 import 'package:tomapp/services/pump_analytics_service.dart';
 import 'package:tomapp/services/pump_repository.dart';
 import 'package:tomapp/services/pump_config_service.dart';
@@ -52,7 +51,6 @@ class _PumpDetailScreenState extends State<PumpDetailScreen> {
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
     final isDark = themeProvider.isDarkMode;
-    final isPositive = widget.pump.priceChange >= 0;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
