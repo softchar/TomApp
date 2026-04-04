@@ -34,10 +34,15 @@ class MacdChartWidget extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          // Chart
+          // Chart - Stack BarChart (for MACD histogram) and LineChart (for DIF/DEA lines)
           Expanded(
-            child: LineChart(
-              _buildChartData(colorScheme),
+            child: Stack(
+              children: [
+                // MACD histogram bars
+                BarChart(_buildBarChartData(colorScheme)),
+                // DIF and DEA lines
+                LineChart(_buildLineChartData(colorScheme)),
+              ],
             ),
           ),
         ],
@@ -70,28 +75,30 @@ class MacdChartWidget extends StatelessWidget {
   }
 
   /// Build chart data
-  LineChartData _buildChartData(ColorScheme colorScheme) {
-    // Prepare data lists for DIF, DEA lines and MACD bars
-    final validDif = <FlSpot>[];
-    final validDea = <FlSpot>[];
-    final validMacd = <FlSpot>[];
+  BarChartData _buildBarChartData(ColorScheme colorScheme) {
+    // Prepare data lists for MACD histogram bars
+    final validMacd = <BarChartGroupData>[];
 
     for (int i = 0; i < macdData.length; i++) {
-      // Add DIF points
-      if (macdData.dif[i] != null) {
-        validDif.add(FlSpot(i.toDouble(), macdData.dif[i]!));
-      }
-      // Add DEA points
-      if (macdData.dea[i] != null) {
-        validDea.add(FlSpot(i.toDouble(), macdData.dea[i]!));
-      }
-      // Add MACD bars (displayed as a line for simplicity in LineChart)
+      // Add MACD histogram bars
       if (macdData.macd[i] != null) {
-        validMacd.add(FlSpot(i.toDouble(), macdData.macd[i]!));
+        final macd = macdData.macd[i]!;
+        validMacd.add(
+          BarChartGroupData(
+            x: i,
+            barRods: [
+              BarChartRodData(
+                toY: macd,
+                color: macd >= 0 ? Colors.red : Colors.green,
+                width: 4,
+              ),
+            ],
+          ),
+        );
       }
     }
 
-    return LineChartData(
+    return BarChartData(
       gridData: FlGridData(
         show: true,
         drawVerticalLine: false,
@@ -109,8 +116,34 @@ class MacdChartWidget extends StatelessWidget {
       borderData: FlBorderData(
         show: false,
       ),
-      // DIF line
+      // MACD histogram bars
+      barGroups: validMacd,
+    );
+  }
+
+  /// Build line chart data for DIF and DEA
+  LineChartData _buildLineChartData(ColorScheme colorScheme) {
+    // Prepare data lists for DIF, DEA lines
+    final validDif = <FlSpot>[];
+    final validDea = <FlSpot>[];
+
+    for (int i = 0; i < macdData.length; i++) {
+      // Add DIF points
+      if (macdData.dif[i] != null) {
+        validDif.add(FlSpot(i.toDouble(), macdData.dif[i]!));
+      }
+      // Add DEA points
+      if (macdData.dea[i] != null) {
+        validDea.add(FlSpot(i.toDouble(), macdData.dea[i]!));
+      }
+    }
+
+    return LineChartData(
+      gridData: const FlGridData(show: false),
+      titlesData: const FlTitlesData(show: false),
+      borderData: FlBorderData(show: false),
       lineBarsData: [
+        // DIF line
         LineChartBarData(
           spots: validDif,
           isCurved: true,
@@ -126,16 +159,6 @@ class MacdChartWidget extends StatelessWidget {
           isCurved: true,
           color: Colors.orange,
           barWidth: 2,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(show: false),
-        ),
-        // MACD histogram (shown as line for now)
-        LineChartBarData(
-          spots: validMacd,
-          isCurved: false,
-          color: Colors.red,
-          barWidth: 1,
           isStrokeCapRound: true,
           dotData: const FlDotData(show: false),
           belowBarData: BarAreaData(show: false),
