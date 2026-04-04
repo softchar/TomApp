@@ -1,29 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/softc/Desktop/**)",
-      "Bash(flutter run:*)",
-      "Bash(flutter create:*)",
-      "Bash(flutter devices:*)",
-      "Bash(flutter:*)",
-      "Bash(adb:*)",
-      "Bash(ssh:*)",
-      "Bash(curl:*)",
-      "Bash(nc:*)",
-      "Bash(tasklist)",
-      "Bash(rm -f ~/.flutter-tool-state ~/.flutter-tool-state.lock)",
-      "Bash(rm -rf /c/Users/softc/flutter/.lockfile)",
-      "Bash(rm -rf /c/Users/softc/AppData/Local/Pub/Cache/.tmp/*)",
-      "Bash(rm -rf /c/Users/softc/AppData/Local/Pub/Cache/.lockfile)",
-      "Bash(cmd.exe /c \"flutter devices\")",
-      "Bash(cmd.exe /c \"where flutter\")",
-      "Bash(cmd.exe /c \"C:\\\\Tools\\\\flutter_windows_3.32.8-stable\\\\flutter\\\\bin\\\\flutter.bat devices\")",
-      "Bash(\"/c/Tools/flutter_windows_3.32.8-stable/flutter/bin/flutter.bat\" devices:*)",
-      "Bash(rm -rf \"/c/Tools/flutter_windows_3.32.8-stable/flutter/.lock\")",
-      "Bash(rm -rf \"/c/Tools/flutter_windows_3.32.8-stable/flutter/bin/cache/lockfile\")",
-      "Bash(rm -rf \"/c/Users/softc/.flutter_tool_state\")",
-      "Bash(powershell.exe -Command \"& ''C:\\\\Tools\\\\flutter_windows_3.32.8-stable\\\\flutter\\\\bin\\\\flutter.bat'' devices\")",
-      "Bash(powershell.exe -Command \"& ''C:\\\\Tools\\\\flutter_windows_3.32.8-stable\\\\flutter\\\\bin\\\\flutter.bat'' run -d 9e365e7b\")"
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(git log:*)",
+      "Bash(git commit:*)",
+      "Bash(flutter test:*)",
+      "Bash(flutter analyze:*)"
     ]
   }
 }
