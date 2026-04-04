@@ -10,7 +10,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static const String _databaseName = 'tomapp.db';
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 2;
   static int get currentVersion => _databaseVersion;
 
   Database? _database;
@@ -67,9 +67,19 @@ class DatabaseHelper {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // 未来版本升级逻辑
     if (oldVersion < 2) {
-      // 添加新字段等
+      // 创建K线缓存表
+      await db.execute('''
+        CREATE TABLE kline_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          symbol TEXT NOT NULL,
+          interval TEXT NOT NULL,
+          data TEXT NOT NULL,
+          cached_at INTEGER NOT NULL,
+          UNIQUE(symbol, interval)
+        )
+      ''');
+      await db.execute('CREATE INDEX idx_kline_symbol_interval ON kline_cache(symbol, interval)');
     }
   }
 
