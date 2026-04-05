@@ -16,11 +16,15 @@ class KlineChartWidget extends StatelessWidget {
   /// 当前价格（可选）
   final double? currentPrice;
 
+  /// 时间周期
+  final String interval;
+
   const KlineChartWidget({
     super.key,
     required this.data,
     required this.isRealtime,
     this.currentPrice,
+    this.interval = '1d',
   });
 
   @override
@@ -47,6 +51,9 @@ class KlineChartWidget extends StatelessWidget {
       );
     }).toList();
 
+    // 1m周期显示折线图，其他周期显示蜡烛图
+    final bool isLine = interval == '1m';
+
     return KChartWidget(
       klineData,
       // 图表样式配置
@@ -56,29 +63,29 @@ class KlineChartWidget extends StatelessWidget {
       // 主图指标：MA（移动平均线）
       mainState: MainState.MA,
 
-      // 副图指标：MACD
-      secondaryState: SecondaryState.MACD,
+      // 副图指标：无（隐藏MACD）
+      secondaryState: SecondaryState.NONE,
 
       // 是否显示成交图
-      volHidden: false,
+      volHidden: true,
 
-      // 是否为折线图（false为K线图）
-      isLine: false,
+      // 是否为折线图（1m为true，其他为false）
+      isLine: isLine,
 
       // 是否隐藏网格
       hideGrid: false,
 
       // 是否显示当前价格线
-      showNowPrice: currentPrice != null,
+      showNowPrice: true,
 
       // 是否显示信息弹窗（长按/点击时显示OHLCV详情）
-      showInfoDialog: true,
+      showInfoDialog: false,
 
       // 是否使用Material风格的信息弹窗
-      materialInfoDialog: true,
+      materialInfoDialog: false,
 
       // 是否单击显示详情数据
-      isTapShowInfoDialog: true,
+      isTapShowInfoDialog: false,
 
       // 是否中文界面
       isChinese: true,

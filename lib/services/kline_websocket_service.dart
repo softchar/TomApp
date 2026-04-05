@@ -99,6 +99,11 @@ class KlineWebSocketService extends ChangeNotifier {
         );
 
         _klineController.add(kline);
+
+        if (kDebugMode) {
+          print('[KlineWebSocketService] 收到K线数据: ${kline.time.toIso8601String()} '
+                'O=${kline.open} H=${kline.high} L=${kline.low} C=${kline.close}');
+        }
       }
     } catch (e) {
       if (kDebugMode) {

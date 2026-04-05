@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import '../models/kline_data.dart';
-import '../models/macd_data.dart';
-import '../services/binance_api_service.dart';
-import '../services/kline_cache_service.dart';
-import '../services/kline_websocket_service.dart';
-import '../services/technical_indicators.dart';
+import 'package:tomapp/models/kline_data.dart';
+import 'package:tomapp/models/macd_data.dart';
+import 'package:tomapp/services/binance_api_service.dart';
+import 'package:tomapp/services/kline_cache_service.dart';
+import 'package:tomapp/services/kline_websocket_service.dart';
+import 'package:tomapp/services/technical_indicators.dart';
 
 /// K线数据状态管理Provider
 ///
@@ -18,7 +18,7 @@ class KlineProvider extends ChangeNotifier {
   final TechnicalIndicators _indicators = TechnicalIndicators();
 
   String _symbol = '';
-  String _currentInterval = '15m';
+  String _currentInterval = '1d';
   List<KlineData> _klineData = [];
   List<KlineDataWithIndicators> _klineWithIndicators = [];
   bool _isLoading = false;
@@ -52,10 +52,20 @@ class KlineProvider extends ChangeNotifier {
   /// [symbol] 交易对符号，如 'BTCUSDT'
   /// [interval] K线间隔，如 '1m', '15m', '1h', '1d'
   Future<void> loadKlines(String symbol, String interval) async {
+    // 保存旧数据用于切换时显示
+    final oldKlineData = _klineData;
+    final oldSymbol = _symbol;
+
     _symbol = symbol;
     _currentInterval = interval;
-    _isLoading = true;
     _errorMessage = null;
+
+    // 如果是切换同一个交易对，不立即清空数据，避免闪烁
+    final isSameSymbol = oldSymbol == symbol;
+    if (!isSameSymbol || oldKlineData.isEmpty) {
+      _isLoading = true;
+    }
+
     notifyListeners();
 
     try {
@@ -145,8 +155,71 @@ class KlineProvider extends ChangeNotifier {
   Future<void> switchInterval(String interval) async {
     if (_currentInterval == interval) return;
 
-    await _stopRealtime();
-    await loadKlines(_symbol, interval);
+    _currentInterval = interval;
+
+    // 先启动新时间周期的WebSocket连接
+    // 这样可以更快地接收到新数据
+    await _wsService.disconnect();
+    await _wsService.connect(_symbol, interval);
+
+    // 重新订阅WebSocket流
+    await _wsSubscription?.cancel();
+    _isRealtime = true;
+    _wsSubscription = _wsService.klineStream.listen(
+      _onKlineUpdate,
+      onError: (error) {
+        if (kDebugMode) {
+          print('KlineProvider: WebSocket error - $error');
+        }
+      },
+    );
+
+    // 加载新数据但不立即清空旧数据
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // 尝试从缓存加载
+      final cachedData = await _cacheService.getCached(_symbol, interval);
+
+      if (cachedData != null && cachedData.isNotEmpty) {
+        // 缓存命中，直接替换数据
+        _klineData = cachedData;
+        _calculateIndicators();
+        _updateCurrentPrice();
+        _isLoading = false;
+        notifyListeners();
+      } else {
+        // 缓存未命中，调用API
+        final apiData = await _apiService.getRecentKlines(
+          symbol: _symbol,
+          interval: interval,
+          limit: 500,
+        );
+
+        // 转换为KlineData
+        _klineData = apiData
+            .map((item) => KlineData.fromBinanceResponse(item as List<dynamic>))
+            .toList();
+
+        // 保存到缓存
+        await _cacheService.saveCache(_symbol, interval, _klineData);
+
+        // 计算技术指标
+        _calculateIndicators();
+        _updateCurrentPrice();
+
+        _isLoading = false;
+        notifyListeners();
+      }
+
+      // 保存用户偏好
+      await _cacheService.savePreferences(_symbol, interval);
+    } catch (e) {
+      _errorMessage = e.toString();
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   /// 切换交易对
@@ -198,12 +271,40 @@ class KlineProvider extends ChangeNotifier {
     final lastIndex = _klineData.length - 1;
     final lastKline = _klineData[lastIndex];
 
+    if (kDebugMode) {
+      print('[KlineProvider] 实时K线更新: ${_symbol} $_currentInterval '
+            '价格: ${data.close} 时间: ${data.time.toIso8601String()}');
+    }
+
     if (_isSameKline(lastKline.time, data.time, _currentInterval)) {
-      // 同一根K线，更新最后一个数据点
-      _klineData[lastIndex] = data;
+      // 同一根K线（实时更新），更新最后一个数据点
+      // 更新开高低收：取当前K线和更新值的合并
+      final updatedKline = KlineData(
+        time: lastKline.time,
+        open: lastKline.open, // 开盘价不变
+        high: data.high > lastKline.high ? data.high : lastKline.high, // 取更高的最高价
+        low: data.low < lastKline.low ? data.low : lastKline.low, // 取更低的最低价
+        close: data.close, // 收盘价实时更新
+        volume: data.volume, // 成交量实时更新
+      );
+
+      _klineData[lastIndex] = updatedKline;
+
+      if (kDebugMode) {
+        print('[KlineProvider] 更新最后一根K线: O=${updatedKline.open} '
+            'H=${updatedKline.high} L=${updatedKline.low} C=${updatedKline.close}');
+      }
+
+      // 同一根K线更新时也要重新计算指标（MA、BOLL、MACD都会变化）
+      _calculateIndicators();
     } else {
       // 新K线，添加到列表
       _klineData.add(data);
+
+      if (kDebugMode) {
+        print('[KlineProvider] 新K线: ${data.time.toIso8601String()} '
+              '价格: ${data.close}');
+      }
 
       // 限制列表长度，避免内存无限增长
       if (_klineData.length > 2000) {

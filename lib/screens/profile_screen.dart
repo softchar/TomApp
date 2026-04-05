@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../main.dart' show popupAlertService;
 import '../services/theme_provider.dart';
 import '../services/notification_service.dart';
 import '../services/binance_api_service.dart';
 import '../services/funding_rate_settings.dart';
 import '../services/kline_cache_service.dart';
+import '../services/pump_config_service.dart';
 import '../providers/kline_provider.dart';
 
 /// 我的页面
@@ -97,6 +97,89 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
           ),
           const SizedBox(height: 32),
+          // 快速上涨设置
+          _buildSectionHeader('快速上涨设置'),
+          Consumer<PumpConfig>(
+            builder: (context, pumpConfig, child) {
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('快速上涨检测'),
+                      subtitle: Text(pumpConfig.pumpAlertEnabled ? '已开启' : '已关闭'),
+                      value: pumpConfig.pumpAlertEnabled,
+                      onChanged: (value) {
+                        pumpConfig.pumpAlertEnabled = value;
+                      },
+                    ),
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                '上涨阈值',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                '${pumpConfig.baseThreshold.toStringAsFixed(1)}%',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '当合约价格上涨超过此百分比时发送通知',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Slider(
+                            value: pumpConfig.baseThreshold,
+                            min: 0.5,
+                            max: 10.0,
+                            divisions: 19,
+                            label: '${pumpConfig.baseThreshold.toStringAsFixed(1)}%',
+                            onChanged: (value) {
+                              pumpConfig.baseThreshold = value;
+                            },
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '0.5%',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                              ),
+                              Text(
+                                '10.0%',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 32),
           // 测试部分
           _buildSectionHeader('测试功能'),
           Card(
@@ -106,29 +189,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 测试整点弹窗按钮
-                  FilledButton.icon(
-                    icon: const Icon(Icons.alarm),
-                    label: const Text('测试整点弹窗'),
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      await popupAlertService.testCheck();
-                      if (mounted) {
-                        messenger.showSnackBar(
-                          const SnackBar(
-                            content: Text('已触发整点检查测试'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   // 测试通知按钮
                   FilledButton.icon(
                     icon: const Icon(Icons.notifications_active),

@@ -71,8 +71,8 @@ class _MainNavigationState extends State<MainNavigation> {
             label: '首页',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.show_chart_outlined),
-            activeIcon: Icon(Icons.show_chart),
+            icon: Icon(Icons.attach_money_outlined),
+            activeIcon: Icon(Icons.attach_money),
             label: '资费',
           ),
           BottomNavigationBarItem(
@@ -83,7 +83,7 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(
             icon: Icon(Icons.trending_up_outlined),
             activeIcon: Icon(Icons.trending_up),
-            label: '暴涨',
+            label: '快速',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),

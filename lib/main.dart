@@ -3,18 +3,21 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
 import 'services/funding_rate_provider.dart';
 import 'services/theme_provider.dart';
-import 'services/popup_alert_service.dart';
 import 'services/long_short_provider.dart';
 import 'services/binance_api_service.dart';
 import 'services/pump_background_service.dart';
 import 'services/pump_alert_service.dart';
 import 'services/binance_websocket_manager.dart';
-import 'services/pump_analytics_service.dart';
-import 'services/pump_config_service.dart';
-import 'services/pump_repository.dart' show RepositoryFactory;
+import 'package:tomapp/services/pump_analytics_service.dart';
+import 'package:tomapp/services/pump_config_service.dart';
+import 'package:tomapp/services/pump_repository.dart' show RepositoryFactory;
+import 'package:tomapp/models/pump_model.dart';
+import 'package:tomapp/models/pump_history_model.dart';
 import 'services/funding_rate_settings.dart';
+import 'services/exchange_info_service.dart';
 import 'providers/pump_list_provider.dart';
 import 'providers/kline_provider.dart';
+import 'providers/market_overview_provider.dart';
 import 'screens/main_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -22,8 +25,6 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-
-late final PopupAlertService popupAlertService;
 
 // Pump检测器 (简化版用于后台服务)
 class _PricePoint {
@@ -33,10 +34,12 @@ class _PricePoint {
 }
 
 class _PumpDetector {
-  final double threshold = 2.0; // 2% 涨幅
+  final double threshold;
   final int cooldownMinutes = 1;
   final Map<String, List<_PricePoint>> _priceHistory = {};
   final Map<String, DateTime> _lastNotificationTime = {};
+
+  _PumpDetector({this.threshold = 2.0});
 
   void addPricePoint(String symbol, double price, DateTime timestamp) {
     _priceHistory.putIfAbsent(symbol, () => []);
@@ -130,15 +133,18 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  final pumpDetector = _PumpDetector();
-  debugPrint('🔧 callbackDispatcher: PumpDetector 已创建，开始定时任务');
+  // 加载 PumpConfig 获取阈值配置
+  final pumpConfig = PumpConfig();
+  await pumpConfig.load();
+  final pumpDetector = _PumpDetector(threshold: pumpConfig.baseThreshold);
+  debugPrint('🔧 callbackDispatcher: PumpDetector 已创建，阈值: ${pumpConfig.baseThreshold}%');
 
   Timer.periodic(const Duration(seconds: 30), (timer) async {
     debugPrint('🔧 callbackDispatcher: 定时器触发 #${timer.tick}');
 
     if (service is AndroidServiceInstance) {
       service.setForegroundNotificationInfo(
-        title: '快速上涨检测',
+        title: '----------',
         content: '后台服务运行中... ${DateTime.now().toIso8601String().substring(11, 19)}',
       );
     }
@@ -180,14 +186,37 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
         final pumps = pumpDetector.checkAll(prices, DateTime.now());
         if (pumps != null) {
           debugPrint('🔧 callbackDispatcher: 检测到 ${pumps.length} 个快速上涨');
+          final repository = RepositoryFactory.create();
+
           for (final entry in pumps.entries) {
             final symbol = entry.key;
             final change = entry.value;
             if (symbol != null) {
               debugPrint('🚀 检测到快速上涨: $symbol +${change.toStringAsFixed(2)}%');
+
+              // 保存到数据库
+              try {
+                final price = prices[symbol] ?? 0.0;
+                final pumpModel = PumpModel(
+                  symbol: symbol,
+                  priceChange: change,
+                  triggerTime: DateTime.now(),
+                  currentPrice: price,
+                );
+                final historyModel = PumpHistoryModel.fromPumpModel(
+                  pumpModel,
+                  strategyType: 'BackgroundService',
+                  cooldownMinutes: 1,
+                );
+                await repository.save(historyModel);
+                debugPrint('💾 已保存快速上涨记录: $symbol');
+              } catch (e) {
+                debugPrint('❌ 保存快速上涨记录失败: $e');
+              }
+
               await notifications.show(
                 symbol.hashCode,
-                '快速上涨提醒',
+                '',
                 '$symbol 快速上涨 ${change.toStringAsFixed(2)}%',
                 const NotificationDetails(
                   android: AndroidNotificationDetails(
@@ -234,10 +263,6 @@ void main() async {
   // 配置 API
   configureApi();
 
-  // 初始化弹窗服务
-  popupAlertService = PopupAlertService();
-  await popupAlertService.initialize();
-
   // 初始化并启动后台快速上涨检测服务
   final backgroundService = PumpBackgroundService.instance;
   await backgroundService.initialize(onStart: callbackDispatcher);
@@ -275,6 +300,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LongShortProvider()),
         ChangeNotifierProvider(create: (_) => PumpAlertService.instance.store),
         ChangeNotifierProvider(create: (_) => BinanceWebSocketManager()),
+        ChangeNotifierProvider(create: (_) => PumpConfig()..load()),
         ChangeNotifierProvider(
           create: (_) => PumpListProvider(
             repository: RepositoryFactory.create(),
@@ -283,6 +309,12 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => KlineProvider(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => MarketOverviewProvider(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => ExchangeInfoService.instance,
         ),
       ],
       child: Consumer<ThemeProvider>(

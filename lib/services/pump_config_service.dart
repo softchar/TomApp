@@ -11,6 +11,7 @@ class PumpConfig with ChangeNotifier {
   static const String _keyMemoryCacheSize = 'pump_memory_cache_size';
   static const String _keyListPageSize = 'pump_list_page_size';
   static const String _keyPullbackMonitorMinutes = 'pump_pullback_monitor_minutes';
+  static const String _keyPumpAlertEnabled = 'pump_alert_enabled';
 
   // 默认值
   double _baseThreshold = 2.0;
@@ -21,6 +22,7 @@ class PumpConfig with ChangeNotifier {
   int _memoryCacheSize = 50;
   int _listPageSize = 50;
   int _pullbackMonitorMinutes = 15;
+  bool _pumpAlertEnabled = true;
 
   // Getters
   double get baseThreshold => _baseThreshold;
@@ -31,6 +33,7 @@ class PumpConfig with ChangeNotifier {
   int get memoryCacheSize => _memoryCacheSize;
   int get listPageSize => _listPageSize;
   int get pullbackMonitorMinutes => _pullbackMonitorMinutes;
+  bool get pumpAlertEnabled => _pumpAlertEnabled;
 
   // Singleton
   static final PumpConfig _instance = PumpConfig._internal();
@@ -52,6 +55,7 @@ class PumpConfig with ChangeNotifier {
       _memoryCacheSize = prefs.getInt(_keyMemoryCacheSize) ?? _memoryCacheSize;
       _listPageSize = prefs.getInt(_keyListPageSize) ?? _listPageSize;
       _pullbackMonitorMinutes = prefs.getInt(_keyPullbackMonitorMinutes) ?? _pullbackMonitorMinutes;
+      _pumpAlertEnabled = prefs.getBool(_keyPumpAlertEnabled) ?? _pumpAlertEnabled;
 
       notifyListeners();
     } catch (e) {
@@ -72,6 +76,7 @@ class PumpConfig with ChangeNotifier {
       await prefs.setInt(_keyMemoryCacheSize, _memoryCacheSize);
       await prefs.setInt(_keyListPageSize, _listPageSize);
       await prefs.setInt(_keyPullbackMonitorMinutes, _pullbackMonitorMinutes);
+      await prefs.setBool(_keyPumpAlertEnabled, _pumpAlertEnabled);
     } catch (e) {
       debugPrint('Failed to save pump config: $e');
     }
@@ -126,6 +131,12 @@ class PumpConfig with ChangeNotifier {
     save();
   }
 
+  set pumpAlertEnabled(bool value) {
+    _pumpAlertEnabled = value;
+    notifyListeners();
+    save();
+  }
+
   /// 重置为默认值
   Future<void> reset() async {
     _baseThreshold = 2.0;
@@ -136,6 +147,7 @@ class PumpConfig with ChangeNotifier {
     _memoryCacheSize = 50;
     _listPageSize = 50;
     _pullbackMonitorMinutes = 15;
+    _pumpAlertEnabled = true;
 
     notifyListeners();
     await save();

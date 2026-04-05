@@ -5,8 +5,8 @@ class IntervalSelector extends StatelessWidget {
   final ValueChanged<String> onIntervalChanged;
 
   static const Map<String, String> _intervals = {
-    '分时': '1m',
     '1m': '1m',
+    '5m': '5m',
     '15m': '15m',
     '1H': '1h',
     '4H': '4h',

@@ -29,8 +29,8 @@ class PumpBackgroundService {
         isForegroundMode: true,
         foregroundServiceNotificationId: 888,
         foregroundServiceTypes: [AndroidForegroundType.dataSync],
-        initialNotificationTitle: '快速上涨检测',
-        initialNotificationContent: '正在监控币安合约...',
+        initialNotificationTitle: '----------',
+        initialNotificationContent: '后台任务运行中...',
       ),
     );
   }
