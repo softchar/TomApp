@@ -1,112 +1,288 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:tomapp/services/pump_store.dart';
-import 'package:tomapp/services/theme_provider.dart';
+import 'package:tomapp/providers/market_overview_provider.dart';
+import 'package:tomapp/providers/pump_list_provider.dart';
+import 'package:tomapp/screens/kline_screen.dart';
 
 /// 首页
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = context.watch<ThemeProvider>().isDarkMode;
+  State<HomeScreen> createState() => _HomeScreenState();
+}
 
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 确保数据已加载
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<MarketOverviewProvider>().refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('首页'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              context.read<MarketOverviewProvider>().refresh();
+            },
+          ),
+        ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.home,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '欢迎使用币安合约费率',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey.shade700,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '点击下方导航栏查看各项功能',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade500,
-              ),
-            ),
-            const SizedBox(height: 40),
-            // 今日快速上涨统计
-            _buildPumpStats(context, isDark),
+      body: RefreshIndicator(
+        onRefresh: () => context.read<MarketOverviewProvider>().refresh(),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: const [
+            // 今日涨幅排行榜 Top20
+            _TopGainersWidget(),
+            SizedBox(height: 16),
+
+            // 最近检测到快速上涨
+            _RecentPumpsWidget(),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildPumpStats(BuildContext context, bool isDark) {
-    final store = context.watch<PumpStore>();
-    final todayCount = store.todayPumpCount(DateTime.now());
+// ==================== 拆分的独立Widget ====================
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 32),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.orange.withOpacity(0.8),
-            Colors.deepOrange.withOpacity(0.8),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.orange.withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.rocket_launch,
-            color: Colors.white,
-            size: 28,
-          ),
-          const SizedBox(width: 16),
-          Column(
+/// 今日涨幅排行榜
+class _TopGainersWidget extends StatelessWidget {
+  const _TopGainersWidget();
+
+  /// 智能价格格式化 - 根据价格大小选择合适的小数位数
+  String _formatPrice(double price) {
+    if (price >= 1000) return price.toStringAsFixed(2);
+    if (price >= 10) return price.toStringAsFixed(3);
+    if (price >= 1) return price.toStringAsFixed(4);
+    if (price >= 0.01) return price.toStringAsFixed(6);
+    return price.toStringAsFixed(8);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<MarketOverviewProvider, List<dynamic>>(
+      selector: (context, provider) => provider.overview?.topGainers ?? [],
+      builder: (context, gainers, child) {
+        if (gainers.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        return Card(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '今日快速上涨',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.trending_up, size: 20, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Text(
+                      '今日涨幅排行榜 Top20',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '检测到 $todayCount 个',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 14,
-                ),
+              const Divider(height: 1),
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: gainers.take(20).length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final ticker = gainers[index];
+                  final rank = index + 1;
+                  final change = ticker.priceChangePercent;
+                  final symbol = ticker.symbol.replaceAll('USDT', '');
+                  final originalSymbol = ticker.symbol;
+
+                  return ListTile(
+                    dense: true,
+                    onTap: () {
+                      // 跳转到K线页面
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => KlineScreen(symbol: originalSymbol),
+                        ),
+                      );
+                    },
+                    leading: SizedBox(
+                      width: 40,
+                      child: Center(
+                        child: Text(
+                          rank.toString(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: rank <= 3 ? Colors.orange : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      symbol,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '+${change.toStringAsFixed(2)}%',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '\$${_formatPrice(ticker.lastPrice)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
+  }
+}
+
+/// 最近检测到快速上涨
+class _RecentPumpsWidget extends StatelessWidget {
+  const _RecentPumpsWidget();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<PumpListProvider>(
+      builder: (context, pumpProvider, child) {
+        final recentPumps = pumpProvider.state.pumps.take(5).toList();
+
+        if (recentPumps.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  Icon(Icons.bolt, size: 48, color: Colors.grey.shade400),
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无快速上涨记录',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '当检测到币种快速上涨时会显示在这里',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.bolt, size: 20, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Text(
+                      '最近检测到快速上涨',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              ...recentPumps.asMap().entries.map((entry) {
+                final index = entry.key;
+                final pump = entry.value;
+                final minutesAgo = pump.age.inMinutes;
+                final symbol = pump.symbol.replaceAll('USDT', '');
+                final originalSymbol = pump.symbol;
+
+                return ListTile(
+                  dense: true,
+                  onTap: () {
+                    // 跳转到K线页面
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => KlineScreen(symbol: originalSymbol),
+                      ),
+                    );
+                  },
+                  leading: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: _getPumpColor(pump.priceChange),
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    symbol,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text(
+                    '$minutesAgo分钟前',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  trailing: Text(
+                    '+${pump.priceChange.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      color: _getPumpColor(pump.priceChange),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Color _getPumpColor(double percent) {
+    if (percent >= 5) return Colors.red;
+    if (percent >= 3) return Colors.orange;
+    return Colors.yellow.shade700;
   }
 }
