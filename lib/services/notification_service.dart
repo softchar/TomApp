@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import '../models/funding_rate.dart';
+import '../utils/app_navigation.dart';
 
 /// 通知服务 - 检测资费间隔变化并发送通知
 class NotificationService {
@@ -47,6 +48,12 @@ class NotificationService {
       onDidReceiveNotificationResponse: (NotificationResponse details) {
         if (kDebugMode) {
           print('Notification clicked: ${details.payload}');
+        }
+        // 处理快速上涨通知点击 - 跳转到K线页面
+        if (details.payload != null && details.payload!.isNotEmpty) {
+          final symbol = details.payload!;
+          // 跳转到K线页面，默认显示1m（分时）
+          AppNavigation.navigateToKline(symbol);
         }
       },
     );
@@ -195,6 +202,8 @@ class NotificationService {
       channelDescription: '合约快速上涨通知',
       importance: Importance.high,
       priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
     );
 
     const iosDetails = DarwinNotificationDetails();
@@ -209,6 +218,7 @@ class NotificationService {
       '🚀 $symbol 快速上涨',
       '+${priceChange.toStringAsFixed(2)}% • 当前价格 \$${currentPrice.toStringAsFixed(2)}',
       details,
+      payload: symbol,
     );
   }
 }

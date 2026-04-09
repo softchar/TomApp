@@ -29,8 +29,8 @@ class PumpBackgroundService {
         isForegroundMode: true,
         foregroundServiceNotificationId: 888,
         foregroundServiceTypes: [AndroidForegroundType.dataSync],
-        initialNotificationTitle: '----------',
-        initialNotificationContent: '后台任务运行中...',
+        initialNotificationTitle: 'TomApp',
+        initialNotificationContent: '后台监控运行中',
       ),
     );
   }

@@ -9,10 +9,12 @@ import 'package:tomapp/models/kline_data.dart';
 
 class KlineScreen extends StatefulWidget {
   final String symbol;
+  final String? defaultInterval;
 
   const KlineScreen({
     super.key,
     required this.symbol,
+    this.defaultInterval,
   });
 
   @override
@@ -25,7 +27,9 @@ class _KlineScreenState extends State<KlineScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<KlineProvider>();
-      provider.loadKlines(widget.symbol, '1d');
+      // 使用 defaultInterval，如果没有则默认使用 '1d'（从通知跳转时传入 '1m'）
+      final interval = widget.defaultInterval ?? '1d';
+      provider.loadKlines(widget.symbol, interval);
 
       // 获取当前合约的多空比数据
       context.read<LongShortProvider>().setPeriod('5m');

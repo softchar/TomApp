@@ -19,6 +19,7 @@ import 'providers/pump_list_provider.dart';
 import 'providers/kline_provider.dart';
 import 'providers/market_overview_provider.dart';
 import 'screens/main_navigation.dart';
+import 'utils/app_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -139,13 +140,14 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
   final pumpDetector = _PumpDetector(threshold: pumpConfig.baseThreshold);
   debugPrint('🔧 callbackDispatcher: PumpDetector 已创建，阈值: ${pumpConfig.baseThreshold}%');
 
-  Timer.periodic(const Duration(seconds: 30), (timer) async {
+  Timer.periodic(const Duration(seconds: 2), (timer) async {
     debugPrint('🔧 callbackDispatcher: 定时器触发 #${timer.tick}');
 
-    if (service is AndroidServiceInstance) {
+    // 只在第一次更新通知，之后不再更新以避免通知重复弹出
+    if (timer.tick == 1 && service is AndroidServiceInstance) {
       service.setForegroundNotificationInfo(
-        title: '----------',
-        content: '后台服务运行中... ${DateTime.now().toIso8601String().substring(11, 19)}',
+        title: 'TomApp',
+        content: '后台监控运行中',
       );
     }
 
@@ -322,6 +324,7 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: '币安合约费率',
             debugShowCheckedModeBanner: false,
+            navigatorKey: AppNavigation.navigatorKey,
             theme: _buildLightTheme(),
             darkTheme: _buildDarkTheme(),
             themeMode: themeProvider.themeMode,
