@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tomapp/providers/market_overview_provider.dart';
 import 'package:tomapp/providers/pump_list_provider.dart';
+import 'package:tomapp/services/favorite_service.dart';
 import 'package:tomapp/screens/kline_screen.dart';
 
 /// 首页
@@ -13,6 +14,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _filterFavoritesOnly = false;
+
   @override
   void initState() {
     super.initState();
@@ -23,11 +28,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('首页'),
         actions: [
+          // 收藏筛选按钮
+          IconButton(
+            icon: Icon(
+              _filterFavoritesOnly ? Icons.star : Icons.star_border,
+              color: _filterFavoritesOnly ? Colors.amber : null,
+            ),
+            tooltip: '只看收藏',
+            onPressed: () {
+              setState(() {
+                _filterFavoritesOnly = !_filterFavoritesOnly;
+              });
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
@@ -35,18 +61,59 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '搜索币种...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                filled: true,
+                fillColor: isDark
+                    ? const Color(0xFF2C2C2C)
+                    : Colors.grey[200],
+                isDense: true,
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value.toUpperCase();
+                });
+              },
+            ),
+          ),
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () => context.read<MarketOverviewProvider>().refresh(),
         child: ListView(
           padding: const EdgeInsets.all(16),
-          children: const [
+          children: [
             // 今日涨幅排行榜 Top20
-            _TopGainersWidget(),
-            SizedBox(height: 16),
+            _TopGainersWidget(
+              searchQuery: _searchQuery,
+              filterFavoritesOnly: _filterFavoritesOnly,
+            ),
+            const SizedBox(height: 16),
 
             // 最近检测到快速上涨
-            _RecentPumpsWidget(),
+            const _RecentPumpsWidget(),
           ],
         ),
       ),
@@ -58,7 +125,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// 今日涨幅排行榜
 class _TopGainersWidget extends StatelessWidget {
-  const _TopGainersWidget();
+  final String searchQuery;
+  final bool filterFavoritesOnly;
+
+  const _TopGainersWidget({
+    required this.searchQuery,
+    this.filterFavoritesOnly = false,
+  });
 
   /// 智能价格格式化 - 根据价格大小选择合适的小数位数
   String _formatPrice(double price) {
@@ -83,6 +156,36 @@ class _TopGainersWidget extends StatelessWidget {
           );
         }
 
+        // 应用搜索和收藏过滤
+        var filteredGainers = gainers;
+        if (searchQuery.isNotEmpty) {
+          filteredGainers = gainers.where((ticker) =>
+            ticker.symbol.toUpperCase().contains(searchQuery)).toList();
+        }
+        if (filterFavoritesOnly) {
+          final favorites = FavoriteService().favorites;
+          filteredGainers = filteredGainers.where((ticker) =>
+            favorites.contains(ticker.symbol)).toList();
+        }
+
+        if (filteredGainers.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  Icon(Icons.search_off, size: 48, color: Colors.grey.shade400),
+                  const SizedBox(height: 16),
+                  Text(
+                    '未找到匹配的币种',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
         return Card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,7 +197,7 @@ class _TopGainersWidget extends StatelessWidget {
                     const Icon(Icons.trending_up, size: 20, color: Colors.red),
                     const SizedBox(width: 8),
                     Text(
-                      '今日涨幅排行榜 Top20',
+                      '今日涨幅排行榜 Top20${searchQuery.isNotEmpty || filterFavoritesOnly ? ' (已筛选)' : ''}',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -106,62 +209,22 @@ class _TopGainersWidget extends StatelessWidget {
               ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: gainers.take(20).length,
+                itemCount: filteredGainers.take(20).length,
                 separatorBuilder: (context, index) => const Divider(height: 1),
                 itemBuilder: (context, index) {
-                  final ticker = gainers[index];
+                  final ticker = filteredGainers[index];
                   final rank = index + 1;
                   final change = ticker.priceChangePercent;
                   final symbol = ticker.symbol.replaceAll('USDT', '');
                   final originalSymbol = ticker.symbol;
 
-                  return ListTile(
-                    dense: true,
-                    onTap: () {
-                      // 跳转到K线页面
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => KlineScreen(symbol: originalSymbol),
-                        ),
-                      );
-                    },
-                    leading: SizedBox(
-                      width: 40,
-                      child: Center(
-                        child: Text(
-                          rank.toString(),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: rank <= 3 ? Colors.orange : Colors.grey,
-                          ),
-                        ),
-                      ),
-                    ),
-                    title: Text(
-                      symbol,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '+${change.toStringAsFixed(2)}%',
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '\$${_formatPrice(ticker.lastPrice)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
+                  return _GainerListTile(
+                    rank: rank,
+                    symbol: symbol,
+                    originalSymbol: originalSymbol,
+                    change: change,
+                    price: ticker.lastPrice,
+                    formatPrice: _formatPrice,
                   );
                 },
               ),
@@ -169,6 +232,127 @@ class _TopGainersWidget extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 涨幅列表项（带收藏按钮）
+class _GainerListTile extends StatefulWidget {
+  final int rank;
+  final String symbol;
+  final String originalSymbol;
+  final double change;
+  final double price;
+  final String Function(double) formatPrice;
+
+  const _GainerListTile({
+    required this.rank,
+    required this.symbol,
+    required this.originalSymbol,
+    required this.change,
+    required this.price,
+    required this.formatPrice,
+  });
+
+  @override
+  State<_GainerListTile> createState() => _GainerListTileState();
+}
+
+class _GainerListTileState extends State<_GainerListTile> {
+  final FavoriteService _favoriteService = FavoriteService();
+  late bool _isFavorite;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFavorite = _favoriteService.isFavorite(widget.originalSymbol);
+    _favoriteService.addListener(_onFavoriteChanged);
+  }
+
+  @override
+  void dispose() {
+    _favoriteService.removeListener(_onFavoriteChanged);
+    super.dispose();
+  }
+
+  void _onFavoriteChanged() {
+    if (mounted) {
+      setState(() {
+        _isFavorite = _favoriteService.isFavorite(widget.originalSymbol);
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    await _favoriteService.toggleFavorite(widget.originalSymbol);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return ListTile(
+      dense: true,
+      onTap: () {
+        // 跳转到K线页面
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => KlineScreen(symbol: widget.originalSymbol),
+          ),
+        );
+      },
+      leading: SizedBox(
+        width: 40,
+        child: Center(
+          child: Text(
+            widget.rank.toString(),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: widget.rank <= 3 ? Colors.orange : Colors.grey,
+            ),
+          ),
+        ),
+      ),
+      title: Text(
+        widget.symbol,
+        style: const TextStyle(fontWeight: FontWeight.w500),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '+${widget.change.toStringAsFixed(2)}%',
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '\$${widget.formatPrice(widget.price)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+          IconButton(
+            icon: Icon(
+              _isFavorite ? Icons.star : Icons.star_border,
+              color: _isFavorite ? Colors.amber : (isDark ? Colors.grey[600] : Colors.grey[400]),
+            ),
+            onPressed: _toggleFavorite,
+            tooltip: _isFavorite ? '取消收藏' : '收藏',
+            constraints: const BoxConstraints(minWidth: 40),
+            padding: EdgeInsets.zero,
+          ),
+        ],
+      ),
     );
   }
 }

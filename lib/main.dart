@@ -15,6 +15,7 @@ import 'package:tomapp/models/pump_model.dart';
 import 'package:tomapp/models/pump_history_model.dart';
 import 'services/funding_rate_settings.dart';
 import 'services/exchange_info_service.dart';
+import 'services/favorite_service.dart';
 import 'providers/pump_list_provider.dart';
 import 'providers/kline_provider.dart';
 import 'providers/market_overview_provider.dart';
@@ -264,6 +265,9 @@ void main() async {
 
   // 配置 API
   configureApi();
+
+  // 初始化收藏服务
+  await FavoriteService().initialize();
 
   // 初始化并启动后台快速上涨检测服务
   final backgroundService = PumpBackgroundService.instance;

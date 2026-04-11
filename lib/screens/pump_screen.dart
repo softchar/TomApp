@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:tomapp/providers/pump_list_provider.dart';
 import 'package:tomapp/services/theme_provider.dart';
 import 'package:tomapp/services/binance_websocket_manager.dart';
+import 'package:tomapp/services/favorite_service.dart';
 import 'package:tomapp/widgets/pump_history_item.dart';
 import 'package:tomapp/screens/pump_detail_screen.dart';
 
@@ -100,6 +101,22 @@ class _PumpScreenState extends State<PumpScreen> {
                     ),
                   ],
                 ),
+              );
+            },
+          ),
+          // 收藏筛选按钮
+          Consumer<PumpListProvider>(
+            builder: (context, provider, child) {
+              final isFilteringFavorites = provider.isFilteringFavorites;
+              return IconButton(
+                icon: Icon(
+                  isFilteringFavorites ? Icons.star : Icons.star_border,
+                  color: isFilteringFavorites ? Colors.amber : null,
+                ),
+                tooltip: '只看收藏',
+                onPressed: () {
+                  provider.setFavoriteFilter(!isFilteringFavorites);
+                },
               );
             },
           ),

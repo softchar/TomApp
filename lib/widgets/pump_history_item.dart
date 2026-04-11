@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:tomapp/models/pump_history_model.dart';
+import 'package:tomapp/services/favorite_service.dart';
 import 'package:intl/intl.dart';
 
-class PumpHistoryItem extends StatelessWidget {
+class PumpHistoryItem extends StatefulWidget {
   final PumpHistoryModel pump;
   final VoidCallback onTap;
 
@@ -13,14 +14,47 @@ class PumpHistoryItem extends StatelessWidget {
   });
 
   @override
+  State<PumpHistoryItem> createState() => _PumpHistoryItemState();
+}
+
+class _PumpHistoryItemState extends State<PumpHistoryItem> {
+  final FavoriteService _favoriteService = FavoriteService();
+  late bool _isFavorite;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFavorite = _favoriteService.isFavorite(widget.pump.symbol);
+    _favoriteService.addListener(_onFavoriteChanged);
+  }
+
+  @override
+  void dispose() {
+    _favoriteService.removeListener(_onFavoriteChanged);
+    super.dispose();
+  }
+
+  void _onFavoriteChanged() {
+    if (mounted) {
+      setState(() {
+        _isFavorite = _favoriteService.isFavorite(widget.pump.symbol);
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    await _favoriteService.toggleFavorite(widget.pump.symbol);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isPositive = pump.priceChange >= 0;
+    final isPositive = widget.pump.priceChange >= 0;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -49,7 +83,7 @@ class PumpHistoryItem extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      pump.symbol,
+                      widget.pump.symbol,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -58,7 +92,7 @@ class PumpHistoryItem extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _formatTime(pump.triggerDateTime),
+                      _formatTime(widget.pump.triggerDateTime),
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -73,7 +107,7 @@ class PumpHistoryItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${isPositive ? '+' : ''}${pump.priceChange.toStringAsFixed(2)}%',
+                    '${isPositive ? '+' : ''}${widget.pump.priceChange.toStringAsFixed(2)}%',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -83,23 +117,23 @@ class PumpHistoryItem extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      if (pump.pullbackPercent != null) ...[
+                      if (widget.pump.pullbackPercent != null) ...[
                         Icon(
-                          pump.pullbackPercent! < 0
+                          widget.pump.pullbackPercent! < 0
                               ? Icons.arrow_downward
-                              : pump.pullbackPercent! > 0
+                              : widget.pump.pullbackPercent! > 0
                                   ? Icons.arrow_upward
                                   : Icons.remove,
                           size: 14,
-                          color: pump.pullbackPercent! < 0
+                          color: widget.pump.pullbackPercent! < 0
                               ? Colors.red
-                              : pump.pullbackPercent! > 0
+                              : widget.pump.pullbackPercent! > 0
                                   ? Colors.green
                                   : Colors.grey,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${pump.pullbackPercent!.toStringAsFixed(2)}%',
+                          '${widget.pump.pullbackPercent!.toStringAsFixed(2)}%',
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -108,13 +142,26 @@ class PumpHistoryItem extends StatelessWidget {
                       ],
                       const SizedBox(width: 8),
                       Icon(
-                        pump.confirmed ? Icons.check_circle : Icons.hourglass_empty,
+                        widget.pump.confirmed ? Icons.check_circle : Icons.hourglass_empty,
                         size: 16,
-                        color: pump.confirmed ? Colors.green : Colors.orange,
+                        color: widget.pump.confirmed ? Colors.green : Colors.orange,
                       ),
                     ],
                   ),
                 ],
+              ),
+
+              // 收藏按钮
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(
+                  _isFavorite ? Icons.star : Icons.star_border,
+                  color: _isFavorite ? Colors.amber : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                ),
+                onPressed: _toggleFavorite,
+                tooltip: _isFavorite ? '取消收藏' : '收藏',
+                constraints: const BoxConstraints(minWidth: 40),
+                padding: EdgeInsets.zero,
               ),
             ],
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:tomapp/models/pump_history_model.dart';
 import 'package:tomapp/services/pump_repository.dart';
 import 'package:tomapp/services/pump_config_service.dart';
+import 'package:tomapp/services/favorite_service.dart';
 
 enum PumpListStatus { initial, loading, loaded, error, empty }
 
@@ -44,10 +45,14 @@ class PumpListProvider extends ChangeNotifier {
   PumpListState _state = PumpListState();
   PumpListState get state => _state;
 
+  /// 获取收藏筛选状态
+  bool get isFilteringFavorites => _filterFavoritesOnly;
+
   // 筛选条件
   String _searchQuery = '';
   String? _filterSymbol;
   bool? _filterConfirmed;
+  bool _filterFavoritesOnly = false;
   PumpListSort _sortType = PumpListSort.timeDesc;
 
   PumpListProvider({
@@ -157,12 +162,24 @@ class PumpListProvider extends ChangeNotifier {
     load(refresh: true);
   }
 
+  /// 设置收藏筛选
+  void setFavoriteFilter(bool favoritesOnly) {
+    _filterFavoritesOnly = favoritesOnly;
+    load(refresh: true);
+  }
+
   List<PumpHistoryModel> _applyFilterAndSort(List<PumpHistoryModel> pumps) {
     var result = pumps.toList();
 
     // 应用搜索
     if (_searchQuery.isNotEmpty) {
       result = result.where((p) => p.symbol.contains(_searchQuery)).toList();
+    }
+
+    // 应用收藏筛选
+    if (_filterFavoritesOnly) {
+      final favorites = FavoriteService().favorites;
+      result = result.where((p) => favorites.contains(p.symbol)).toList();
     }
 
     // 应用排序
