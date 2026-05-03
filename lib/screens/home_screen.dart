@@ -4,6 +4,7 @@ import 'package:tomapp/providers/market_overview_provider.dart';
 import 'package:tomapp/providers/pump_list_provider.dart';
 import 'package:tomapp/services/favorite_service.dart';
 import 'package:tomapp/screens/kline_screen.dart';
+import 'package:tomapp/services/theme_provider.dart' show AppColors, AppSpacing, AppRadius;
 
 /// 首页
 class HomeScreen extends StatefulWidget {
@@ -36,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -45,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: Icon(
               _filterFavoritesOnly ? Icons.star : Icons.star_border,
-              color: _filterFavoritesOnly ? Colors.amber : null,
+              color: _filterFavoritesOnly ? AppColors.primary : null,
             ),
             tooltip: '只看收藏',
             onPressed: () {
@@ -64,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -82,13 +84,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                     : null,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
                 filled: true,
                 fillColor: isDark
-                    ? const Color(0xFF2C2C2C)
-                    : Colors.grey[200],
+                    ? AppColors.surfaceVariant
+                    : theme.colorScheme.surfaceVariant.withOpacity(0.3),
                 isDense: true,
               ),
               onChanged: (value) {
@@ -103,14 +105,14 @@ class _HomeScreenState extends State<HomeScreen> {
       body: RefreshIndicator(
         onRefresh: () => context.read<MarketOverviewProvider>().refresh(),
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.md),
           children: [
             // 今日涨幅排行榜 Top20
             _TopGainersWidget(
               searchQuery: _searchQuery,
               filterFavoritesOnly: _filterFavoritesOnly,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.md),
 
             // 最近检测到快速上涨
             const _RecentPumpsWidget(),
@@ -287,12 +289,25 @@ class _GainerListTileState extends State<_GainerListTile> {
     await _favoriteService.toggleFavorite(widget.originalSymbol);
   }
 
+  Color _getRankColor(int rank) {
+    switch (rank) {
+      case 1:
+        return AppColors.primary; // Gold for #1
+      case 2:
+        return AppColors.surfaceVariant; // Silver
+      case 3:
+        return const Color(0xFFB45309); // Bronze
+      default:
+        return AppColors.textTertiary;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
 
-    return ListTile(
-      dense: true,
+    return InkWell(
       onTap: () {
         // 跳转到K线页面
         Navigator.push(
@@ -302,56 +317,74 @@ class _GainerListTileState extends State<_GainerListTile> {
           ),
         );
       },
-      leading: SizedBox(
-        width: 40,
-        child: Center(
-          child: Text(
-            widget.rank.toString(),
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: widget.rank <= 3 ? Colors.orange : Colors.grey,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        child: Row(
+          children: [
+            // Rank badge
+            SizedBox(
+              width: 32,
+              child: Center(
+                child: Text(
+                  widget.rank.toString(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: _getRankColor(widget.rank),
+                  ),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: AppSpacing.sm),
+
+            // Symbol
+            Expanded(
+              child: Text(
+                widget.symbol,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+
+            // Price and change column
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '+${widget.change.toStringAsFixed(2)}%',
+                  style: TextStyle(
+                    color: AppColors.gain,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+                Text(
+                  '\$${widget.formatPrice(widget.price)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: AppSpacing.sm),
+
+            // Favorite button
+            IconButton(
+              icon: Icon(
+                _isFavorite ? Icons.star : Icons.star_border,
+                color: _isFavorite ? AppColors.primary : theme.colorScheme.onSurfaceVariant,
+                size: 20,
+              ),
+              onPressed: _toggleFavorite,
+              tooltip: _isFavorite ? '取消收藏' : '收藏',
+              constraints: const BoxConstraints(minWidth: 40),
+              padding: EdgeInsets.zero,
+              splashRadius: 20,
+            ),
+          ],
         ),
-      ),
-      title: Text(
-        widget.symbol,
-        style: const TextStyle(fontWeight: FontWeight.w500),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '+${widget.change.toStringAsFixed(2)}%',
-                style: const TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                '\$${widget.formatPrice(widget.price)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
-          IconButton(
-            icon: Icon(
-              _isFavorite ? Icons.star : Icons.star_border,
-              color: _isFavorite ? Colors.amber : (isDark ? Colors.grey[600] : Colors.grey[400]),
-            ),
-            onPressed: _toggleFavorite,
-            tooltip: _isFavorite ? '取消收藏' : '收藏',
-            constraints: const BoxConstraints(minWidth: 40),
-            padding: EdgeInsets.zero,
-          ),
-        ],
       ),
     );
   }

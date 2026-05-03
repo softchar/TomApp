@@ -7,6 +7,7 @@ import 'package:tomapp/services/binance_websocket_manager.dart';
 import 'package:tomapp/services/favorite_service.dart';
 import 'package:tomapp/widgets/pump_history_item.dart';
 import 'package:tomapp/screens/pump_detail_screen.dart';
+import 'package:tomapp/services/theme_provider.dart' show AppColors, AppSpacing, AppRadius;
 
 class PumpScreen extends StatefulWidget {
   const PumpScreen({super.key});
@@ -50,13 +51,12 @@ class _PumpScreenState extends State<PumpScreen> {
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
     final isDark = themeProvider.isDarkMode;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
+      backgroundColor: isDark ? AppColors.background : null,
       appBar: AppBar(
         title: const Text('快速上涨'),
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        elevation: 0,
         actions: [
           Consumer<BinanceWebSocketManager>(
             builder: (context, wsManager, child) {
@@ -66,21 +66,21 @@ class _PumpScreenState extends State<PumpScreen> {
 
               switch (state) {
                 case WebSocketConnectionState.connected:
-                  dotColor = Colors.green;
+                  dotColor = AppColors.gain;
                   statusText = '已连接';
                   break;
                 case WebSocketConnectionState.connecting:
                 case WebSocketConnectionState.reconnecting:
-                  dotColor = Colors.orange;
+                  dotColor = AppColors.warning;
                   statusText = '连接中';
                   break;
                 default:
-                  dotColor = Colors.red;
+                  dotColor = AppColors.destructive;
                   statusText = '已断开';
               }
 
               return Padding(
-                padding: const EdgeInsets.only(right: 16),
+                padding: const EdgeInsets.only(right: AppSpacing.md),
                 child: Row(
                   children: [
                     Container(
@@ -89,14 +89,20 @@ class _PumpScreenState extends State<PumpScreen> {
                       decoration: BoxDecoration(
                         color: dotColor,
                         shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: dotColor.withOpacity(0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
                       statusText,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.grey[300] : Colors.grey[700],
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -111,7 +117,7 @@ class _PumpScreenState extends State<PumpScreen> {
               return IconButton(
                 icon: Icon(
                   isFilteringFavorites ? Icons.star : Icons.star_border,
-                  color: isFilteringFavorites ? Colors.amber : null,
+                  color: isFilteringFavorites ? AppColors.primary : null,
                 ),
                 tooltip: '只看收藏',
                 onPressed: () {
@@ -144,12 +150,12 @@ class _PumpScreenState extends State<PumpScreen> {
               ),
             ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(56),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -165,13 +171,13 @@ class _PumpScreenState extends State<PumpScreen> {
                       )
                     : null,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
                 filled: true,
                 fillColor: isDark
-                    ? const Color(0xFF2C2C2C)
-                    : Colors.grey[200],
+                    ? AppColors.surfaceVariant
+                    : theme.colorScheme.surfaceVariant.withOpacity(0.3),
                 isDense: true,
               ),
               onChanged: (value) {
@@ -188,8 +194,10 @@ class _PumpScreenState extends State<PumpScreen> {
           switch (state.status) {
             case PumpListStatus.initial:
             case PumpListStatus.loading:
-              return const Center(
-                child: CircularProgressIndicator(),
+              return Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.primary,
+                ),
               );
 
             case PumpListStatus.error:
@@ -200,17 +208,21 @@ class _PumpScreenState extends State<PumpScreen> {
                     Icon(
                       Icons.error_outline,
                       size: 64,
-                      color: isDark ? Colors.red[400] : Colors.red[700],
+                      color: AppColors.destructive,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.md),
                     Text(
                       state.errorMessage ?? '加载失败',
-                      style: TextStyle(
-                        color: isDark ? Colors.red[400] : Colors.red[700],
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: AppColors.destructive,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.md),
                     FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: AppColors.onAccent,
+                      ),
                       onPressed: () => provider.load(refresh: true),
                       child: const Text('重试'),
                     ),
@@ -224,16 +236,15 @@ class _PumpScreenState extends State<PumpScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.trending_up,
+                      Icons.local_fire_department_outlined,
                       size: 64,
-                      color: isDark ? Colors.grey[700] : Colors.grey[300],
+                      color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.md),
                     Text(
                       '暂无快速上涨记录',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: isDark ? Colors.grey[500] : Colors.grey[400],
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -243,16 +254,19 @@ class _PumpScreenState extends State<PumpScreen> {
             case PumpListStatus.loaded:
               return RefreshIndicator(
                 onRefresh: () => provider.load(refresh: true),
+                color: AppColors.primary,
                 child: ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                   itemCount: state.pumps.length + (state.hasMore ? 1 : 0),
                   itemBuilder: (context, index) {
                     if (index >= state.pumps.length) {
                       return const Center(
                         child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(),
+                          padding: EdgeInsets.all(AppSpacing.md),
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
                         ),
                       );
                     }
