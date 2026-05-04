@@ -17,7 +17,6 @@ import 'package:tomapp/models/pump_history_model.dart';
 import 'services/funding_rate_settings.dart';
 import 'services/exchange_info_service.dart';
 import 'services/favorite_service.dart';
-import 'services/contract_sync_service.dart';
 import 'providers/pump_list_provider.dart';
 import 'providers/kline_provider.dart';
 import 'providers/market_overview_provider.dart';
