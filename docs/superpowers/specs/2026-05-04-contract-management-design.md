@@ -73,18 +73,28 @@
 
 ### 表名: `futures_symbols`
 
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| symbol | TEXT | 交易对（主键） |
-| base_asset | TEXT | 标的资产 |
-| quote_asset | TEXT | 报价资产 |
-| status | TEXT | 合约状态（TRADING/DELIVERING等） |
-| contract_type | TEXT | 合约类型（PERPETUAL/CURRENT_QUARTER等） |
-| onboard_date | INTEGER | 上线日期时间戳 |
-| delivery_date | INTEGER | 交割日期时间戳 |
-| price_precision | INTEGER | 价格精度 |
-| quantity_precision | INTEGER | 数量精度 |
-| updated_at | INTEGER | 本地更新时间戳 |
+| 字段名 | 类型 | 说明 | JSON源字段 |
+|--------|------|------|------------|
+| symbol | TEXT | 交易对（PRIMARY KEY） | symbol |
+| base_asset | TEXT | 标的资产 | baseAsset |
+| quote_asset | TEXT | 报价资产 | quoteAsset |
+| status | TEXT | 合约状态（TRADING/DELIVERING等） | status |
+| contract_type | TEXT | 合约类型（PERPETUAL/CURRENT_QUARTER等） | contractType |
+| onboard_date | INTEGER | 上线日期时间戳 | onboardDate |
+| delivery_date | INTEGER | 交割日期时间戳 | deliveryDate |
+| price_precision | INTEGER | 价格精度 | pricePrecision |
+| quantity_precision | INTEGER | 数量精度 | quantityPrecision |
+| updated_at | INTEGER | 本地更新时间戳 | - (自动生成) |
+
+### 字段映射规则
+- 数据库使用 snake_case 命名
+- API响应使用 camelCase 命名
+- ContractInfoService负责转换映射
+
+### 主键处理
+- `symbol` 为 PRIMARY KEY
+- 使用 `INSERT OR REPLACE` 语句处理冲突
+- 相同symbol的数据会被完全替换
 
 ### 索引
 - `idx_status`: status字段索引（用于筛选可交易合约）
@@ -92,6 +102,7 @@
 
 ### 数据库版本
 - 升级到 v3
+- 迁移策略：创建新表，保留现有PumpHistory和kline_cache表
 
 ## 数据流
 
@@ -184,6 +195,43 @@ Card(
 
 ## 非功能需求
 
-- **性能:** SQLite批量操作使用事务处理
-- **可靠性:** 网络失败时自动重试
+- **性能:** SQLite批量操作使用事务处理，批量大小100条/事务
+- **可靠性:** 网络失败时自动重试，下次定时器触发时继续
 - **兼容性:** 数据库升级需要处理旧版本迁移
+
+## FuturesSymbol类扩展
+
+需要在 `lib/models/futures_symbol.dart` 或 `FuturesSymbol` 类中添加字段：
+
+```dart
+class FuturesSymbol {
+  // ... 现有字段
+  final int pricePrecision;   // 新增
+  final int quantityPrecision; // 新增
+}
+```
+
+## 定时器生命周期管理
+
+- **App启动时:** 检查 `ContractSyncSettings.autoSyncEnabled`，如果为true则自动启动同步
+- **App进入后台:** 定时器暂停，恢复前台后继续
+- **App关闭:** 定时器取消，下次启动时根据设置重新启动
+- **设置持久化:** 使用SharedPreferences存储开关状态
+
+## 内部状态管理
+
+虽然UI不需要显示同步状态，但内部需要管理：
+
+| 状态 | 说明 |
+|------|------|
+| idle | 空闲，未同步 |
+| syncing | 正在同步 |
+| error | 同步失败 |
+
+这些状态用于日志记录和调试，不暴露给UI。
+
+## 批量操作策略
+
+- **批量大小:** 每个事务处理100条记录
+- **部分失败处理:** 单条记录失败不影响其他记录，记录日志后继续
+- **错误重试:** 失败的记录在下次完整同步时重试
