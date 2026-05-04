@@ -17,6 +17,7 @@ import 'package:tomapp/models/pump_history_model.dart';
 import 'services/funding_rate_settings.dart';
 import 'services/exchange_info_service.dart';
 import 'services/favorite_service.dart';
+import 'services/contract_sync_service.dart';
 import 'providers/pump_list_provider.dart';
 import 'providers/kline_provider.dart';
 import 'providers/market_overview_provider.dart';
@@ -270,6 +271,14 @@ void main() async {
 
   // 初始化收藏服务
   await FavoriteService().initialize();
+
+  // Initialize contract sync settings
+  await ContractSyncSettings.instance.init();
+
+  // Auto-start sync if enabled
+  if (ContractSyncSettings.instance.autoSyncEnabled) {
+    await ContractSyncService.instance.startSync();
+  }
 
   // 初始化并启动后台快速上涨检测服务
   final backgroundService = PumpBackgroundService.instance;

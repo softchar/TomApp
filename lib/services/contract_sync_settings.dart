@@ -7,10 +7,29 @@ class ContractSyncSettings with ChangeNotifier {
 
   bool _autoSyncEnabled = false;
 
+  // Singleton pattern
+  static final ContractSyncSettings _instance = ContractSyncSettings._internal();
+  static ContractSyncSettings get instance => _instance;
+  factory ContractSyncSettings() => _instance;
+
+  ContractSyncSettings._internal() {
+    _loadSettings();
+  }
+
   bool get autoSyncEnabled => _autoSyncEnabled;
 
-  /// 加载设置
+  /// Initialize (for compatibility with non-singleton usage)
+  Future<void> init() async {
+    await _loadSettings();
+  }
+
+  /// 加载设置 (public method for Provider usage)
   Future<void> load() async {
+    await _loadSettings();
+  }
+
+  /// Load settings from SharedPreferences
+  Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _autoSyncEnabled = prefs.getBool(_keyAutoSyncEnabled) ?? false;
