@@ -16,7 +16,12 @@ class ContractSyncService {
   // Private fields
   Timer? _timer;
   SyncStatus _status = SyncStatus.idle;
+  bool _syncLock = false;
   final Duration _syncInterval = const Duration(hours: 1);
+
+  // Polling constants
+  static const int _maxInitAttempts = 50;
+  static const Duration _initPollInterval = Duration(milliseconds: 100);
 
   // Singleton pattern
   static ContractSyncService? _instance;
@@ -38,7 +43,7 @@ class ContractSyncService {
 
   /// Start periodic sync
   /// Returns true if sync was started, false if already running
-  bool startSync() {
+  Future<bool> startSync() async {
     if (isRunning) {
       if (kDebugMode) {
         print('[ContractSyncService] Sync already running, ignoring start request');
@@ -51,7 +56,7 @@ class ContractSyncService {
     }
 
     // Immediately perform first sync
-    performSync();
+    await performSync();
 
     // Start periodic timer
     _timer = Timer.periodic(_syncInterval, (_) {
@@ -75,14 +80,15 @@ class ContractSyncService {
   /// Perform sync operation
   /// Coordinates fetching from ExchangeInfoService and storing via ContractInfoService
   Future<void> performSync() async {
-    // Check if already syncing
-    if (_status == SyncStatus.syncing) {
+    // Check if already syncing (use lock to prevent concurrent execution)
+    if (_syncLock) {
       if (kDebugMode) {
         print('[ContractSyncService] Already syncing, skipping this cycle');
       }
       return;
     }
 
+    _syncLock = true;
     _status = SyncStatus.syncing;
 
     try {
@@ -97,9 +103,9 @@ class ContractSyncService {
           print('[ContractSyncService] Waiting for ExchangeInfoService initialization...');
         }
 
-        // Poll for initialization (50 times, 100ms each = 5 seconds max)
-        for (int i = 0; i < 50; i++) {
-          await Future.delayed(const Duration(milliseconds: 100));
+        // Poll for initialization
+        for (int i = 0; i < _maxInitAttempts; i++) {
+          await Future.delayed(_initPollInterval);
           if (exchangeInfoService.isInitialized) {
             if (kDebugMode) {
               print('[ContractSyncService] ExchangeInfoService initialized after ${i * 100}ms');
@@ -107,11 +113,12 @@ class ContractSyncService {
             break;
           }
 
-          if (i == 49) {
+          if (i == _maxInitAttempts - 1) {
             if (kDebugMode) {
-              print('[ContractSyncService] ExchangeInfoService not initialized after 5 seconds, aborting sync');
+              print('[ContractSyncService] ExchangeInfoService not initialized after ${_maxInitAttempts * _initPollInterval.inMilliseconds}ms, aborting sync');
             }
             _status = SyncStatus.error;
+            _syncLock = false;
             return;
           }
         }
@@ -144,6 +151,8 @@ class ContractSyncService {
         print('[ContractSyncService] Sync failed: $e');
       }
       _status = SyncStatus.error;
+    } finally {
+      _syncLock = false;
     }
   }
 
