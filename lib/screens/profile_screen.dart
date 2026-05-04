@@ -6,6 +6,8 @@ import '../services/binance_api_service.dart';
 import '../services/funding_rate_settings.dart';
 import '../services/kline_cache_service.dart';
 import '../services/pump_config_service.dart';
+import '../services/contract_sync_settings.dart';
+import '../services/contract_sync_service.dart';
 import '../providers/kline_provider.dart';
 
 /// 我的页面
@@ -175,6 +177,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 32),
+          // 合约信息管理部分
+          _buildSectionHeader('合约信息管理'),
+          Consumer<ContractSyncSettings>(
+            builder: (context, settings, child) {
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: SwitchListTile(
+                  title: const Text('自动同步合约信息'),
+                  subtitle: Text(
+                    settings.autoSyncEnabled
+                        ? '每小时自动同步'
+                        : '已关闭',
+                  ),
+                  value: settings.autoSyncEnabled,
+                  onChanged: (value) async {
+                    await settings.setAutoSyncEnabled(value);
+                    if (value) {
+                      ContractSyncService.instance.startSync();
+                    } else {
+                      ContractSyncService.instance.stopSync();
+                    }
+                  },
                 ),
               );
             },

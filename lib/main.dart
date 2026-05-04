@@ -20,6 +20,7 @@ import 'services/favorite_service.dart';
 import 'providers/pump_list_provider.dart';
 import 'providers/kline_provider.dart';
 import 'providers/market_overview_provider.dart';
+import 'services/contract_sync_settings.dart';
 import 'screens/main_navigation.dart';
 import 'utils/app_navigation.dart';
 import 'dart:async';
@@ -322,6 +323,9 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => ExchangeInfoService.instance,
+        ),
+        ChangeNotifierProvider(
+          create: (_) => ContractSyncSettings()..load(),
         ),
       ],
       child: Consumer<ThemeProvider>(
