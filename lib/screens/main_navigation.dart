@@ -8,6 +8,8 @@ import 'profile_screen.dart';
 import '../services/funding_rate_provider.dart';
 import '../services/funding_rate_settings.dart';
 import '../services/theme_provider.dart' show AppColors;
+import '../services/contract_sync_settings.dart';
+import '../services/contract_sync_service.dart';
 
 /// 主导航页面 - 带底部导航栏
 class MainNavigation extends StatefulWidget {
@@ -34,6 +36,7 @@ class _MainNavigationState extends State<MainNavigation> {
     // 初始化费率设置并启动自动更新
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initFundingRateUpdate();
+      _initContractSync();
     });
   }
 
@@ -43,6 +46,13 @@ class _MainNavigationState extends State<MainNavigation> {
     if (!mounted) return;
     if (settings.autoUpdateEnabled) {
       context.read<FundingRateProvider>().startPeriodicUpdate();
+    }
+  }
+
+  Future<void> _initContractSync() async {
+    final syncSettings = context.read<ContractSyncSettings>();
+    if (syncSettings.autoSyncEnabled) {
+      await ContractSyncService.instance.startSync();
     }
   }
 

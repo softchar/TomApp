@@ -12,9 +12,7 @@ class ContractSyncSettings with ChangeNotifier {
   static ContractSyncSettings get instance => _instance;
   factory ContractSyncSettings() => _instance;
 
-  ContractSyncSettings._internal() {
-    _loadSettings();
-  }
+  ContractSyncSettings._internal();
 
   bool get autoSyncEnabled => _autoSyncEnabled;
 

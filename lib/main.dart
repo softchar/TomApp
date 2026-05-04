@@ -275,11 +275,6 @@ void main() async {
   // Initialize contract sync settings
   await ContractSyncSettings.instance.init();
 
-  // Auto-start sync if enabled
-  if (ContractSyncSettings.instance.autoSyncEnabled) {
-    await ContractSyncService.instance.startSync();
-  }
-
   // 初始化并启动后台快速上涨检测服务
   final backgroundService = PumpBackgroundService.instance;
   await backgroundService.initialize(onStart: callbackDispatcher);
