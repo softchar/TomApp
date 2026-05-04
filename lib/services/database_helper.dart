@@ -10,7 +10,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static const String _databaseName = 'tomapp.db';
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
   static int get currentVersion => _databaseVersion;
 
   Database? _database;
@@ -64,6 +64,29 @@ class DatabaseHelper {
     await db.execute('''
       CREATE INDEX idx_is_confirmed ON PumpHistory(isConfirmed)
     ''');
+
+    await db.execute('''
+      CREATE TABLE futures_symbols (
+        symbol TEXT PRIMARY KEY,
+        base_asset TEXT NOT NULL,
+        quote_asset TEXT NOT NULL,
+        status TEXT NOT NULL,
+        contract_type TEXT NOT NULL,
+        onboard_date INTEGER NOT NULL,
+        delivery_date INTEGER NOT NULL,
+        price_precision INTEGER NOT NULL,
+        quantity_precision INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_status ON futures_symbols(status)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_updated_at ON futures_symbols(updated_at)
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -80,6 +103,26 @@ class DatabaseHelper {
         )
       ''');
       await db.execute('CREATE INDEX idx_kline_symbol_interval ON kline_cache(symbol, interval)');
+    }
+
+    if (oldVersion < 3) {
+      // 创建期货合约表
+      await db.execute('''
+        CREATE TABLE futures_symbols (
+          symbol TEXT PRIMARY KEY,
+          base_asset TEXT NOT NULL,
+          quote_asset TEXT NOT NULL,
+          status TEXT NOT NULL,
+          contract_type TEXT NOT NULL,
+          onboard_date INTEGER NOT NULL,
+          delivery_date INTEGER NOT NULL,
+          price_precision INTEGER NOT NULL,
+          quantity_precision INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX idx_status ON futures_symbols(status)');
+      await db.execute('CREATE INDEX idx_updated_at ON futures_symbols(updated_at)');
     }
   }
 

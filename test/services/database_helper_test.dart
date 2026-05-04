@@ -10,7 +10,7 @@ void main() {
     });
 
     test('databaseVersion is defined', () {
-      expect(DatabaseHelper.currentVersion, 2);
+      expect(DatabaseHelper.currentVersion, 3);
     });
   });
 }
