@@ -61,6 +61,8 @@ class FuturesSymbol {
   final int onBoardDate;
   final int deliveryDate;     // 交割日期（交割合约才有）
   final int deliveryTime;     // 交割时间（交割合约才有）
+  final int pricePrecision;   // 价格精度
+  final int quantityPrecision; // 数量精度
 
   FuturesSymbol({
     required this.symbol,
@@ -71,6 +73,8 @@ class FuturesSymbol {
     required this.onBoardDate,
     this.deliveryDate = 0,
     this.deliveryTime = 0,
+    this.pricePrecision = 0,
+    this.quantityPrecision = 0,
   });
 
   factory FuturesSymbol.fromJson(Map<String, dynamic> json) {
@@ -85,6 +89,8 @@ class FuturesSymbol {
       onBoardDate: json['onBoardDate'] as int? ?? 0,
       deliveryDate: json['deliveryDate'] as int? ?? 0,
       deliveryTime: json['deliveryTime'] as int? ?? 0,
+      pricePrecision: json['pricePrecision'] as int? ?? 0,
+      quantityPrecision: json['quantityPrecision'] as int? ?? 0,
     );
   }
 
@@ -106,6 +112,8 @@ class FuturesSymbol {
       'onBoardDate': onBoardDate,
       'deliveryDate': deliveryDate,
       'deliveryTime': deliveryTime,
+      'pricePrecision': pricePrecision,
+      'quantityPrecision': quantityPrecision,
     };
   }
 }
