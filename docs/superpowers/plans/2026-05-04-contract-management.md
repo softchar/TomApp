@@ -110,10 +110,10 @@ Add new fields to serialization:
   }
 ```
 
-- [ ] **Step 5: Test app builds**
+- [ ] **Step 5: Analyze code for errors**
 
-Run: `flutter build apk --debug`
-Expected: Build succeeds without errors
+Run: `flutter analyze lib/services/exchange_info_service.dart`
+Expected: No issues found
 
 - [ ] **Step 6: Commit**
 
@@ -164,11 +164,11 @@ Add to `_onCreate` method (after PumpHistory table, around line 67):
     ''');
 
     await db.execute('''
-      CREATE INDEX idx_futures_status ON futures_symbols(status)
+      CREATE INDEX idx_status ON futures_symbols(status)
     ''');
 
     await db.execute('''
-      CREATE INDEX idx_futures_updated_at ON futures_symbols(updated_at)
+      CREATE INDEX idx_updated_at ON futures_symbols(updated_at)
     ''');
 ```
 
@@ -209,8 +209,8 @@ Update `_onUpgrade` method:
           updated_at INTEGER NOT NULL
         )
       ''');
-      await db.execute('CREATE INDEX idx_futures_status ON futures_symbols(status)');
-      await db.execute('CREATE INDEX idx_futures_updated_at ON futures_symbols(updated_at)');
+      await db.execute('CREATE INDEX idx_status ON futures_symbols(status)');
+      await db.execute('CREATE INDEX idx_updated_at ON futures_symbols(updated_at)');
     }
   }
 ```
@@ -628,7 +628,19 @@ class ContractSyncService {
 
       // 确保ExchangeInfoService已初始化
       if (!ExchangeInfoService.instance.isInitialized) {
-        await Future.delayed(const Duration(seconds: 1));
+        // 等待ExchangeInfoService初始化完成（最多5秒）
+        int attempts = 0;
+        while (!ExchangeInfoService.instance.isInitialized && attempts < 50) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          attempts++;
+        }
+        if (!ExchangeInfoService.instance.isInitialized) {
+          if (kDebugMode) {
+            print('[ContractSync] ExchangeInfoService not initialized, aborting');
+          }
+          _status = SyncStatus.error;
+          return;
+        }
       }
 
       // 获取合约信息
@@ -691,7 +703,7 @@ git commit -m "feat: add ContractSyncService with hourly timer"
 
 **Files:**
 - Modify: `lib/screens/profile_screen.dart`
-- Insert position: After "快速上涨设置" section (after line 181)
+- Insert position: After "快速上涨设置" Card section, before "测试功能" section (find `// 测试部分` comment)
 
 **Why:** Add the contract sync toggle UI.
 
@@ -804,7 +816,7 @@ Run: Read `lib/main.dart`
 
 - [ ] **Step 2: Add initialization in main()**
 
-Before `runApp()`, add:
+Find the services initialization section (after `FavoriteService().initialize()` around line 271, before `PumpBackgroundService.initialize()` around line 274). Add:
 
 ```dart
   // Initialize contract sync settings
@@ -871,9 +883,15 @@ Expected: Sync executes immediately
 
 - [ ] **Step 3: Test database storage**
 
-Run: Query database or add debug output
+Run: Add temporary debug code or use SQLite viewer
 
-Expected: futures_symbols table contains records
+```dart
+// Add to ContractInfoService temporarily for testing:
+final stats = await ContractInfoService.instance.getStats();
+print('DB stats: total=${stats['total']}, trading=${stats['trading']}');
+```
+
+Expected: futures_symbols table contains records, stats show non-zero values
 
 - [ ] **Step 4: Test toggle OFF**
 
