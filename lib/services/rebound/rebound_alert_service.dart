@@ -36,6 +36,9 @@ class ReboundAlertService {
   /// 已知的全部合约（从 exchangeInfo 获取）
   Set<String>? _knownSymbols;
 
+  /// warm-up 中的标的（由 handleClosedKline 更新，传给 provider）
+  final Set<String> _warmingSymbols = {};
+
   ReboundAlertService({
     required ReboundKlineStreamService streamService,
     required ReboundDetector detector,
@@ -59,6 +62,10 @@ class ReboundAlertService {
   }) async {
     _subscribedSymbols.addAll(symbols);
 
+    // 标记所有标的为 warm-up 中（UI 显示加载状态）
+    _warmingSymbols.addAll(symbols);
+    _provider.updateWarmingUpSymbols(_warmingSymbols.toSet());
+
     // 连接 WS（sharded combined-stream，内部 warm-up）
     await _streamService.connect(symbols, timeframes);
 
@@ -80,6 +87,7 @@ class ReboundAlertService {
     _watchlistTimer = null;
     _streamService.disconnect();
     _signalsBySymbol.clear();
+    _warmingSymbols.clear();
     _provider.clear();
   }
 
@@ -88,7 +96,25 @@ class ReboundAlertService {
   @visibleForTesting
   void handleClosedKline(ClosedKline c) {
     // 1. warm-up 期间不触发（per D-06）
-    if (_streamService.isWarmingUp(c.symbol, c.timeframe)) return;
+    if (_streamService.isWarmingUp(c.symbol, c.timeframe)) {
+      // 更新 warm-up 状态到 provider
+      if (!_warmingSymbols.contains(c.symbol)) {
+        _warmingSymbols.add(c.symbol);
+        _provider.updateWarmingUpSymbols(_warmingSymbols.toSet());
+      }
+      return;
+    }
+
+    // warm-up 完成后从集合中移除（检查该 symbol 所有 TF 是否都结束 warm-up）
+    if (_warmingSymbols.contains(c.symbol)) {
+      final stillWarming = ['15m', '1h', '4h', '1d'].any(
+        (tf) => _streamService.isWarmingUp(c.symbol, tf),
+      );
+      if (!stillWarming) {
+        _warmingSymbols.remove(c.symbol);
+        _provider.updateWarmingUpSymbols(_warmingSymbols.toSet());
+      }
+    }
 
     // 2. 获取 rolling window
     final window = _streamService.windowOf(c.symbol, c.timeframe);

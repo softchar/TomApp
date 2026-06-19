@@ -12,6 +12,9 @@ class ReboundScoreProvider extends ChangeNotifier {
   /// symbol → timeframe → 最近 N 根收盘价（用于 sparkline 渲染）
   final Map<String, Map<String, List<double>>> _recentClosesBySymbol = {};
 
+  /// warm-up 中的标的集合（由 ReboundAlertService 更新，UI 显示加载状态）
+  final Set<String> _warmingUpSymbols = {};
+
   /// 不可变视图（UI 读取）
   Map<String, Map<String, ReboundSignal?>> get signalsBySymbol =>
       Map.unmodifiable(_signalsBySymbol);
@@ -37,6 +40,9 @@ class ReboundScoreProvider extends ChangeNotifier {
   /// 获取最近收盘价（用于 sparkline 渲染）。无数据返回 null。
   List<double>? getRecentCloses(String symbol, String tf) =>
       _recentClosesBySymbol[symbol]?[tf];
+
+  /// warm-up 中的标的集合（不可变视图）。
+  Set<String> get warmingUpSymbols => Set.unmodifiable(_warmingUpSymbols);
 
   /// 更新单个信号 + 通知监听者（Phase 4 UI rebuild）。
   ///
@@ -74,6 +80,19 @@ class ReboundScoreProvider extends ChangeNotifier {
   void clear() {
     _signalsBySymbol.clear();
     _recentClosesBySymbol.clear();
+    _warmingUpSymbols.clear();
+    notifyListeners();
+  }
+
+  /// 更新 warm-up 状态集合（由 ReboundAlertService 调用）。
+  void updateWarmingUpSymbols(Set<String> symbols) {
+    if (_warmingUpSymbols.length == symbols.length &&
+        _warmingUpSymbols.containsAll(symbols)) {
+      return; // 无变更，不触发通知
+    }
+    _warmingUpSymbols
+      ..clear()
+      ..addAll(symbols);
     notifyListeners();
   }
 }
