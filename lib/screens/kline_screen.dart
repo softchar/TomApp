@@ -11,10 +11,18 @@ class KlineScreen extends StatefulWidget {
   final String symbol;
   final String? defaultInterval;
 
+  /// 下跌段起始时间（毫秒时间戳），用于 K 线高亮标注。
+  final int? highlightStartMs;
+
+  /// 拉回段结束时间（毫秒时间戳），用于 K 线高亮标注。
+  final int? highlightEndMs;
+
   const KlineScreen({
     super.key,
     required this.symbol,
     this.defaultInterval,
+    this.highlightStartMs,
+    this.highlightEndMs,
   });
 
   @override
@@ -59,7 +67,10 @@ class _KlineScreenState extends State<KlineScreen> {
           const _PriceInfoWidget(),
 
           // K线图表 - 限制高度，只监听图表数据变化
-          const _KlineChartWidget(),
+          _KlineChartWidget(
+            highlightStartMs: widget.highlightStartMs,
+            highlightEndMs: widget.highlightEndMs,
+          ),
 
           // 5分钟多空比显示（紧挨着K线图下方）
           const _LongShortRatioWidget(),
@@ -227,7 +238,10 @@ class _PriceInfoWidget extends StatelessWidget {
 
 /// K线图表 - 添加 RepaintBoundary 隔离重绘，限制高度
 class _KlineChartWidget extends StatelessWidget {
-  const _KlineChartWidget();
+  final int? highlightStartMs;
+  final int? highlightEndMs;
+
+  const _KlineChartWidget({this.highlightStartMs, this.highlightEndMs});
 
   @override
   Widget build(BuildContext context) {
@@ -262,6 +276,8 @@ class _KlineChartWidget extends StatelessWidget {
                       isRealtime: data.isRealtime,
                       currentPrice: data.currentPrice,
                       interval: data.interval,
+                      highlightStartMs: highlightStartMs,
+                      highlightEndMs: highlightEndMs,
                     ),
                   ),
           ),

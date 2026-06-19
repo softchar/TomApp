@@ -5,7 +5,8 @@ import '../models/kline_data.dart';
 
 /// K线图表组件
 ///
-/// 使用flutter_chen_kchart库显示K线图表，支持MA、BOLL、MACD等技术指标
+/// 使用flutter_chen_kchart库显示K线图表，支持MA、BOLL、MACD等技术指标。
+/// 支持高亮标注下跌段+拉回段区域（反弹信号下钻）。
 class KlineChartWidget extends StatelessWidget {
   /// K线数据列表（包含技术指标）
   final List<KlineDataWithIndicators> data;
@@ -19,12 +20,20 @@ class KlineChartWidget extends StatelessWidget {
   /// 时间周期
   final String interval;
 
+  /// 下跌段起始时间（毫秒时间戳），null 则不标注。
+  final int? highlightStartMs;
+
+  /// 拉回段结束时间（毫秒时间戳），null 则不标注。
+  final int? highlightEndMs;
+
   const KlineChartWidget({
     super.key,
     required this.data,
     required this.isRealtime,
     this.currentPrice,
     this.interval = '1d',
+    this.highlightStartMs,
+    this.highlightEndMs,
   });
 
   @override
@@ -54,7 +63,7 @@ class KlineChartWidget extends StatelessWidget {
     // 1m周期显示折线图，其他周期显示蜡烛图
     final bool isLine = interval == '1m';
 
-    return KChartWidget(
+    final chart = KChartWidget(
       klineData,
       // 图表样式配置
       isTrendLine: false, // 是否启用趋势线绘制
@@ -116,5 +125,83 @@ class KlineChartWidget extends StatelessWidget {
       // 是否启用震动反馈（移动端）
       enableHapticFeedback: true,
     );
+
+    // 如果有高亮参数，用 Stack 叠加高亮层
+    if (highlightStartMs != null && highlightEndMs != null) {
+      return Stack(
+        children: [
+          chart,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _HighlightPainter(
+                  startMs: highlightStartMs!,
+                  endMs: highlightEndMs!,
+                  klineData: data,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return chart;
+  }
+}
+
+/// 反弹信号高亮标注画笔。
+///
+/// 在 K 线图上叠加半透明矩形标注下跌段（红色）和拉回段（绿色）。
+/// 根据时间范围在数据列表中找到对应的 K 线索引，按比例映射到图表 x 轴。
+class _HighlightPainter extends CustomPainter {
+  final int startMs;
+  final int endMs;
+  final List<KlineDataWithIndicators> klineData;
+
+  _HighlightPainter({
+    required this.startMs,
+    required this.endMs,
+    required this.klineData,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (klineData.isEmpty) return;
+
+    // 找到 startMs 和 endMs 在数据中的索引
+    int? startIdx;
+    int? endIdx;
+    for (var i = 0; i < klineData.length; i++) {
+      final t = klineData[i].time.millisecondsSinceEpoch;
+      if (startIdx == null && t >= startMs) startIdx = i;
+      if (t <= endMs) endIdx = i;
+    }
+    if (startIdx == null || endIdx == null || startIdx >= endIdx) return;
+
+    final totalLen = klineData.length;
+    // 图表区域：KChartWidget 左侧有价标宽度约 60px，右侧有些 padding
+    // 这是估算值（未精确适配 KChartWidget 内部布局）
+    const chartLeft = 60.0;
+    final chartRight = size.width - 8.0;
+    final chartWidth = chartRight - chartLeft;
+
+    final x1 = chartLeft + (startIdx / totalLen) * chartWidth;
+    final x2 = chartLeft + ((endIdx + 1) / totalLen) * chartWidth;
+
+    // 绘制绿色高亮区域（反弹段）
+    final greenPaint = Paint()
+      ..color = Colors.green.withOpacity(0.15)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(
+      Rect.fromLTRB(x1, 0, x2, size.height),
+      greenPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HighlightPainter oldDelegate) {
+    return startMs != oldDelegate.startMs ||
+        endMs != oldDelegate.endMs;
   }
 }

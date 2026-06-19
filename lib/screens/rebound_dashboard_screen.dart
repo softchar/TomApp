@@ -325,12 +325,36 @@ class _SignalRow extends StatelessWidget {
   }
 
   void _navigateToKline(BuildContext context) {
+    // 计算高亮窗口时间戳
+    final tfMs = _tfDurationMs(signal.timeframe);
+    final totalKlines = signal.recoveryEndIndex - signal.dropStartIndex + 1;
+    final highlightStartMs =
+        signal.timestamp.millisecondsSinceEpoch - totalKlines * tfMs;
+    final highlightEndMs = signal.timestamp.millisecondsSinceEpoch;
+
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => KlineScreen(
         symbol: signal.symbol,
         defaultInterval: signal.timeframe,
+        highlightStartMs: highlightStartMs,
+        highlightEndMs: highlightEndMs,
       ),
     ));
+  }
+
+  static int _tfDurationMs(String tf) {
+    switch (tf) {
+      case '15m':
+        return 900000;
+      case '1h':
+        return 3600000;
+      case '4h':
+        return 14400000;
+      case '1d':
+        return 86400000;
+      default:
+        return 3600000;
+    }
   }
 }
 

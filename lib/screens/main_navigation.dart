@@ -5,6 +5,7 @@ import 'funding_screen.dart';
 import 'long_short_screen.dart';
 import 'pump_screen.dart';
 import 'profile_screen.dart';
+import 'rebound_dashboard_screen.dart';
 import '../services/funding_rate_provider.dart';
 import '../services/funding_rate_settings.dart';
 import '../services/theme_provider.dart' show AppColors;
@@ -28,6 +29,7 @@ class _MainNavigationState extends State<MainNavigation> {
     const LongShortScreen(),
     const PumpScreen(),
     const ProfileScreen(),
+    const ReboundDashboardScreen(),
   ];
 
   @override
@@ -124,6 +126,11 @@ class _MainNavigationState extends State<MainNavigation> {
               icon: Icon(Icons.person_outline),
               activeIcon: Icon(Icons.person),
               label: '我',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.trending_up),
+              activeIcon: Icon(Icons.trending_up),
+              label: '反弹',
             ),
           ],
         ),
