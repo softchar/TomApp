@@ -95,4 +95,48 @@ void main() {
       expect(provider.activeSymbols, isEmpty);
     });
   });
+
+  group('recentCloses（sparkline 数据流）', () {
+    test('upsert 传 recentCloses 后 getRecentCloses 可获取', () {
+      provider.upsert('BTCUSDT', '15m', _signal('BTCUSDT', '15m'),
+          recentCloses: [99.0, 100.0, 101.0]);
+      final closes = provider.getRecentCloses('BTCUSDT', '15m');
+      expect(closes, isNotNull);
+      expect(closes, [99.0, 100.0, 101.0]);
+    });
+
+    test('不传 recentCloses 时 getRecentCloses 返回 null（向后兼容）', () {
+      provider.upsert('ETHUSDT', '1h', _signal('ETHUSDT', '1h'));
+      final closes = provider.getRecentCloses('ETHUSDT', '1h');
+      expect(closes, isNull);
+    });
+
+    test('多次 upsert 同一 symbol+tf，最近收盘价被最新值覆盖', () {
+      provider.upsert('BTCUSDT', '1h', _signal('BTCUSDT', '1h'),
+          recentCloses: [100.0, 101.0]);
+      provider.upsert('BTCUSDT', '1h', _signal('BTCUSDT', '1h', score: 90),
+          recentCloses: [200.0, 201.0, 202.0]);
+      final closes = provider.getRecentCloses('BTCUSDT', '1h');
+      expect(closes, [200.0, 201.0, 202.0]);
+      // 信号本身也被更新
+      expect(provider.getSignal('BTCUSDT', '1h')!.score, 90);
+    });
+
+    test('removeSymbol 也清除对应 recentCloses', () {
+      provider.upsert('BTCUSDT', '1h', _signal('BTCUSDT', '1h'),
+          recentCloses: [100.0, 101.0]);
+      provider.removeSymbol('BTCUSDT');
+      expect(provider.getRecentCloses('BTCUSDT', '1h'), isNull);
+    });
+
+    test('clear 也清除所有 recentCloses', () {
+      provider.upsert('A', '1h', _signal('A', '1h'),
+          recentCloses: [100.0]);
+      provider.upsert('B', '4h', _signal('B', '4h'),
+          recentCloses: [200.0]);
+      provider.clear();
+      expect(provider.getRecentCloses('A', '1h'), isNull);
+      expect(provider.getRecentCloses('B', '4h'), isNull);
+    });
+  });
 }
