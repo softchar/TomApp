@@ -1,8 +1,9 @@
-# 工作流：合约快速反弹
+# 工作流：contract-quick-rebound（合约快速反弹）
 
 ## 基本信息
 
-- **名称**：合约快速反弹
+- **名称（slug）**：contract-quick-rebound
+- **显示标题**：合约快速反弹
 - **创建时间**：2025-06-19
 - **状态**：active
 - **描述**：专注于合约交易快速反弹策略的开发工作流
@@ -35,4 +36,4 @@
 ## 活跃阶段
 
 当前阶段：初始化
-下一步：运行 `/gsd-new-milestone --ws 合约快速反弹` 设置里程碑
+下一步：运行 `/gsd-new-milestone --ws contract-quick-rebound` 设置里程碑
