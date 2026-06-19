@@ -43,13 +43,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: 指标基础（ATR/RSI/Bollinger/swing + SDK 升级 + drift schema）
-**Goal**: 为下游检测器、监控、回测提供共享的纯函数技术指标计算基础，同时完成 SDK 升级与 drift/fl_chart 依赖落地（gating prerequisite，解锁后续全部阶段）
+**Goal**: 为下游检测器、监控、回测提供共享的纯函数技术指标计算基础，同时完成 SDK 升级（≥3.6）与 drift/archive 依赖落地（gating prerequisite，解锁后续全部阶段）。注：fl_chart 1.2 升级延后到 Phase 4（其 CandlestickChart 仅看板需要，且 0.65→1.2 是破坏性升级会牵连既有 macd_chart_widget，集中到图表阶段一起做更内聚）。
 **Depends on**: Nothing (first phase)
 **Requirements**: INDIC-01, INDIC-02, INDIC-03, INDIC-04
 **Success Criteria** (what must be TRUE):
   1. ATR(14) 计算可在 live 与回测拿到**同一实现、同一值**（验证 2×ATR 跌幅阈值与 0.3×ATR 止损阈值一致），合成 K 线序列单测覆盖 Wilders 平滑与 warm-up 头 14 根返回未就绪
   2. RSI(14) 含超卖拐头判定（<30 拐头向上）可输出，Bollinger Bands（上/中/下轨）与 swing high/low 识别可通过单测
-  3. Dart SDK 已升到 ≥3.6（同时满足 fl_chart 1.2 ≥3.6.2 与 drift 2.32），`flutter pub get` 无版本冲突；fl_chart 1.2 / drift 2.3x / archive 4.0.2 / drift_dev 装好
+  3. Dart SDK 已升到 ≥3.6（满足 drift 2.32 的 ≥3.6 要求），`flutter pub get` 无版本冲突；drift 2.3x / archive 4.0.2 / drift_dev 装好（fl_chart 1.2 升级延后到 Phase 4）
   4. drift `Klines` / `BacktestRuns` / `BacktestTrades` 表已建 + `DatabaseHelper` schema migration 通过；既有 pump/chart 功能回归无影响
 **Plans**: TBD
 
@@ -77,7 +77,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 
 ### Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）
-**Goal**: 用户能在按周期分 Tab 的实时看板上看到当前反弹监控候选，按评分排序，并下钻到 K 线详情；信号统一文案「监控候选」+ 风险提示
+**Goal**: 用户能在按周期分 Tab 的实时看板上看到当前反弹监控候选，按评分排序，并下钻到 K 线详情；信号统一文案「监控候选」+ 风险提示。本阶段同时完成 fl_chart `^0.65.0`→`^1.2.0` 升级（启用原生 CandlestickChart）并迁移既有 `lib/widgets/macd_chart_widget.dart` 到 1.x API，保持零回归。
 **Depends on**: Phase 3
 **Requirements**: DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06
 **Success Criteria** (what must be TRUE):
