@@ -62,7 +62,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. `ReboundDetector.evaluate(List<KlineData> window, ReboundParams p) → ReboundSignal?` 为纯函数——无 `DateTime.now()`、无 async、无网络、无 Provider、无跨调用可变状态（静态分析可验证）；同一输入 live 路径与回测路径调用结果完全一致
   3. 输出 0-100 强度评分（回补比例/速度/量能/共振加权）+ 死猫反弹风险分；评分权重业务先验固定（跌幅深 30/回补强 30/共振 25/量能 15，标「Phase 6 校准」，不进参数扫描）
   4. 合成 fixtures 单测覆盖：lookahead 抵御、warm-up 抵御、死猫 vs 真反转判别、下跌中继/dump 残留不误触发
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 02-01-PLAN.md — 数据模型 + ReboundDetector 三阶段纯函数 + ReboundConfluenceScorer
+- [ ] 02-02-PLAN.md — 合成 fixtures 单测覆盖（11 场景：V 型/warm-up/死猫/lookahead/幂等等）
 
 ### Phase 3: 实时监控接线（sharded combined-stream WS + 编排器 + Provider）
 **Goal**: 把纯函数检测器接到真实 Binance 合约 K 线流——sharded combined-stream WS 订阅多币多周期，单一编排器持有 `Map<symbol, Map<TF, signal>>` 跑共振评分，喂给 `ReboundScoreProvider`；最重基础设施改造 phase
@@ -118,7 +121,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. 指标基础 | 0/0 | Not started | - |
-| 2. 反弹检测器 + 评分 + 共振 | 0/0 | Not started | - |
+| 2. 反弹检测器 + 评分 + 共振 | 0/2 | Planning | - |
 | 3. 实时监控接线 | 0/0 | Not started | - |
 | 4. 实时看板 UI | 0/0 | Not started | - |
 | 5. 推送提醒 | 0/0 | Not started | - |
