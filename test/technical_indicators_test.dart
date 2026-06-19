@@ -142,7 +142,7 @@ void main() {
           ),
       ];
       final b = ti.calculateBOLL(k, period: 20);
-      final i = 25; // 远超 warm-up
+      const i = 25; // 远超 warm-up
       expect(b.upper[i], isNotNull);
       expect(b.middle[i], isNotNull);
       expect(b.lower[i], isNotNull);
