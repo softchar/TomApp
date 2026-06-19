@@ -38,6 +38,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // 跳过 release 的 lintVitalRelease 任务：该任务会联网下载 Google SDK/Maven 索引
+    // (dl.google.com 硬编码 URL，绕过仓库镜像)，在国内网络下会卡死。非上架构建可安全跳过。
+    lint {
+        checkReleaseBuilds = false
+    }
 }
 
 flutter {

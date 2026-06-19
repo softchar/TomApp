@@ -44,3 +44,4 @@ See `.planning/codebase/` for detailed codebase analysis:
 - `STACK.md` - Technology stack and dependencies
 - `CONVENTIONS.md` - Coding conventions and patterns
 - `CONCERNS.md` - Technical debt and improvement areas
+- `BUILD-ENVIRONMENT.md` - 构建环境配置（国内网络镜像、构建/安装/诊断流程，换机器/CI 复用）
