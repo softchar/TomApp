@@ -51,7 +51,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. RSI(14) 含超卖拐头判定（<30 拐头向上）可输出，Bollinger Bands（上/中/下轨）与 swing high/low 识别可通过单测
   3. Dart SDK 已升到 ≥3.6（满足 drift 2.32 的 ≥3.6 要求），`flutter pub get` 无版本冲突；drift 2.3x / archive 4.0.2 / drift_dev 装好（fl_chart 1.2 升级延后到 Phase 4）
   4. drift `Klines` / `BacktestRuns` / `BacktestTrades` 表已建 + `DatabaseHelper` schema migration 通过；既有 pump/chart 功能回归无影响
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [x] 01-01-PLAN.md — ATR/RSI/Bollinger/Swing 指标 + SDK 升级 + drift schema
 
 ### Phase 2: 反弹检测器 + 评分 + 共振（纯函数，零 I/O）
 **Goal**: 锁定反弹信号的单一逻辑真源——一个纯函数 `ReboundDetector.evaluate`，live 与回测共用同一份代码，接入任何 I/O 前 100% 单测覆盖
@@ -64,8 +66,8 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. 合成 fixtures 单测覆盖：lookahead 抵御、warm-up 抵御、死猫 vs 真反转判别、下跌中继/dump 残留不误触发
 **Plans**: 2 plans
 Plans:
-- [ ] 02-01-PLAN.md — 数据模型 + ReboundDetector 三阶段纯函数 + ReboundConfluenceScorer
-- [ ] 02-02-PLAN.md — 合成 fixtures 单测覆盖（11 场景：V 型/warm-up/死猫/lookahead/幂等等）
+- [x] 02-01-PLAN.md — 数据模型 + ReboundDetector 三阶段纯函数 + ReboundConfluenceScorer
+- [x] 02-02-PLAN.md — 合成 fixtures 单测覆盖（11 场景：V 型/warm-up/死猫/lookahead/幂等等）
 
 ### Phase 3: 实时监控接线（sharded combined-stream WS + 编排器 + Provider）
 **Goal**: 把纯函数检测器接到真实 Binance 合约 K 线流——sharded combined-stream WS 订阅多币多周期，单一编排器持有 `Map<symbol, Map<TF, signal>>` 跑共振评分，喂给 `ReboundScoreProvider`；最重基础设施改造 phase
@@ -79,8 +81,8 @@ Plans:
   5. 多周期共振检测：同币多周期同步反弹 → 升级信号；可先 headless（日志）验证，再接 Provider
 **Plans**: 2 plans
 Plans:
-- [ ] 03-01-PLAN.md — ReboundKlineStreamService：sharded combined-stream WS + k.x 过滤 + rolling buffer + warm-up + 重连回填
-- [ ] 03-02-PLAN.md — ReboundAlertService 编排器 + ReboundScoreProvider + main.dart 注册 + watchlist churn
+- [x] 03-01-PLAN.md — ReboundKlineStreamService：sharded combined-stream WS + k.x 过滤 + rolling buffer + warm-up + 重连回填
+- [x] 03-02-PLAN.md — ReboundAlertService 编排器 + ReboundScoreProvider + main.dart 注册 + watchlist churn
 
 ### Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）
 **Goal**: 用户能在按周期分 Tab 的实时看板上看到当前反弹监控候选，按评分排序，并下钻到 K 线详情；信号统一文案「监控候选」+ 风险提示。本阶段同时完成 fl_chart `^0.65.0`→`^1.2.0` 升级（启用原生 CandlestickChart）并迁移既有 `lib/widgets/macd_chart_widget.dart` 到 1.x API，保持零回归。
@@ -91,7 +93,10 @@ Plans:
   2. 每条信号标注死猫风险（图标/颜色）+ 止损参考位；warming-up 状态标的明确展示且不出信号
   3. 文案全文 grep 无「买入/强买/信号」等执行性词，统一为「监控候选」+ 固定风险提示（防虚假信心，Pitfall 13）
   4. 点击信号下钻到既有 `KlineScreen`（复用，最小改动接受初始标注参数），高亮检测到的下跌+拉回窗口
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 04-01-PLAN.md — fl_chart 0.65→1.2 升级 + macd_chart_widget 迁移
+- [ ] 04-02-PLAN.md — ReboundDashboardScreen 看板 UI（TabBar + 信号列表 + sparkline + KlineScreen 下钻）
 **UI hint**: yes
 
 ### Phase 5: 推送提醒（分级 + 冷却 + 归并 + 总量上限）
@@ -123,10 +128,10 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. 指标基础 | 0/0 | Not started | - |
-| 2. 反弹检测器 + 评分 + 共振 | 0/2 | Planning | - |
-| 3. 实时监控接线 | 0/2 | Planning | - |
-| 4. 实时看板 UI | 0/0 | Not started | - |
+| 1. 指标基础 | 1/1 | Complete | 2026-06-19 |
+| 2. 反弹检测器 + 评分 + 共振 | 2/2 | Complete | 2026-06-19 |
+| 3. 实时监控接线 | 2/2 | Complete | 2026-06-19 |
+| 4. 实时看板 UI | 0/2 | Planned | - |
 | 5. 推送提醒 | 0/0 | Not started | - |
 | 6. 回测验证 | 0/0 | Not started | - |
 
