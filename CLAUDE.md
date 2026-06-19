@@ -13,7 +13,7 @@ TomApp is a Flutter cryptocurrency trading application focused on pump detection
 ## Key Technologies
 
 - Flutter 3.24 with Dart 3.6
-- Riverpod for state management
+- `provider` 6.1.0 (ChangeNotifier) for state management
 - Binance API integration
 - Real-time WebSocket data streaming
 
