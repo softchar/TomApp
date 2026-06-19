@@ -77,7 +77,10 @@ Plans:
   3. 新订阅 warm-up（先 REST 拉 ≥50-100 根历史）期间该标的标记 `warming-up` 不触发信号；重连成功后 REST 按 `lastConfirmedCloseTime` 回填缺口 K 线并**整体重算指标**（非增量）；解析失败不再静默吞（计数 + 熔断）（Pitfall 7/8）
   4. 信号数据源明确为 **mark price kline**（非 last price，last 仅展示）；定期（≥1h）刷新 `/fapi/v1/exchangeInfo` 自动剔除下架合约，看板无幽灵币（Pitfall 12）
   5. 多周期共振检测：同币多周期同步反弹 → 升级信号；可先 headless（日志）验证，再接 Provider
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 03-01-PLAN.md — ReboundKlineStreamService：sharded combined-stream WS + k.x 过滤 + rolling buffer + warm-up + 重连回填
+- [ ] 03-02-PLAN.md — ReboundAlertService 编排器 + ReboundScoreProvider + main.dart 注册 + watchlist churn
 
 ### Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）
 **Goal**: 用户能在按周期分 Tab 的实时看板上看到当前反弹监控候选，按评分排序，并下钻到 K 线详情；信号统一文案「监控候选」+ 风险提示。本阶段同时完成 fl_chart `^0.65.0`→`^1.2.0` 升级（启用原生 CandlestickChart）并迁移既有 `lib/widgets/macd_chart_widget.dart` 到 1.x API，保持零回归。
@@ -122,7 +125,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 |-------|----------------|--------|-----------|
 | 1. 指标基础 | 0/0 | Not started | - |
 | 2. 反弹检测器 + 评分 + 共振 | 0/2 | Planning | - |
-| 3. 实时监控接线 | 0/0 | Not started | - |
+| 3. 实时监控接线 | 0/2 | Planning | - |
 | 4. 实时看板 UI | 0/0 | Not started | - |
 | 5. 推送提醒 | 0/0 | Not started | - |
 | 6. 回测验证 | 0/0 | Not started | - |
