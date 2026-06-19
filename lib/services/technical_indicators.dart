@@ -170,4 +170,160 @@ class TechnicalIndicators {
       time: data.map((d) => d.time).toList(),
     );
   }
+
+  // ─── Phase 1 新增：ATR / RSI / swing（纯函数实例方法，沿用 KlineData）────
+  // 设计约束（per SUMMARY.md / PLAN 01 must_haves）：
+  //  - 无状态实例方法（与既有 calculateMA/calculateBOLL/calculateMACD 风格一致，
+  //    不引入新的 OHLC 类型、不混用类级与实例级方法）。
+  //  - 纯函数：不依赖当前时钟、不含异步、不依赖状态管理框架、不做文件或网络 IO。
+  //  - live 路径与 Phase 6 回测调用同一份代码（同源不变量）。
+
+  /// 单根 True Range。首根无 prevClose 时取 high-low。
+  double _trueRange(List<KlineData> klines, int i) {
+    if (i == 0) return klines[0].high - klines[0].low;
+    final prevClose = klines[i - 1].close;
+    final hl = klines[i].high - klines[i].low;
+    final hc = (klines[i].high - prevClose).abs();
+    final lc = (klines[i].low - prevClose).abs();
+    double m = hl;
+    if (hc > m) m = hc;
+    if (lc > m) m = lc;
+    return m;
+  }
+
+  /// ATR(14) 单值（最新根）。长度 <= period 返回 null（warm-up）。
+  /// Wilders/RMA 平滑，2×ATR 跌幅阈值与 0.3×ATR 止损阈值在 live/回测同源。
+  double? atr(List<KlineData> klines, {int period = 14}) {
+    final series = atrSeries(klines, period: period);
+    if (series.isEmpty) return null;
+    return series.last;
+  }
+
+  /// ATR(14) 序列：前 period 个为 null（warm-up），其后 Wilders 平滑。
+  /// 供回测逐根取值，与 [atr] 同源。种子 = 头 period 根 TR 简单平均。
+  List<double?> atrSeries(List<KlineData> klines, {int period = 14}) {
+    final n = klines.length;
+    final res = List<double?>.filled(n, null);
+    if (n <= period) return res; // 前 period 个为 null（warm-up，per D-06）
+    // 种子：头 period 根 TR 的简单平均
+    double seed = 0;
+    for (int i = 0; i < period; i++) {
+      seed += _trueRange(klines, i);
+    }
+    double a = seed / period;
+    res[period] = a;
+    // Wilders 平滑：atr = (prevAtr*(period-1) + tr) / period
+    for (int i = period + 1; i < n; i++) {
+      final tr = _trueRange(klines, i - 1);
+      a = (a * (period - 1) + tr) / period;
+      res[i] = a;
+    }
+    return res;
+  }
+
+  /// 由平均 gain/loss 计算 RSI（avgLoss==0 → 100）。
+  double _rsiFromAvg(double avgGain, double avgLoss) {
+    if (avgLoss == 0) return 100.0;
+    final rs = avgGain / avgLoss;
+    return 100.0 - 100.0 / (1.0 + rs);
+  }
+
+  /// RSI(14) 序列（供拐头判定）；前 period 个为 null。Wilders 平滑。
+  List<double?> _rsiSeries(List<KlineData> klines, {int period = 14}) {
+    final n = klines.length;
+    final res = List<double?>.filled(n, null);
+    if (n <= period) return res; // 需 period 个 delta（≥ period+1 根）
+    double avgGain = 0;
+    double avgLoss = 0;
+    for (int i = 1; i <= period; i++) {
+      final ch = klines[i].close - klines[i - 1].close;
+      if (ch >= 0) {
+        avgGain += ch;
+      } else {
+        avgLoss -= ch;
+      }
+    }
+    avgGain /= period;
+    avgLoss /= period;
+    res[period] = _rsiFromAvg(avgGain, avgLoss);
+    for (int i = period + 1; i < n; i++) {
+      final ch = klines[i].close - klines[i - 1].close;
+      final gain = ch > 0 ? ch : 0.0;
+      final loss = ch < 0 ? -ch : 0.0;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
+      res[i] = _rsiFromAvg(avgGain, avgLoss);
+    }
+    return res;
+  }
+
+  /// RSI(14) 单值（最新根）；长度 <= period 返回 null。
+  double? rsi(List<KlineData> klines, {int period = 14}) {
+    final series = _rsiSeries(klines, period: period);
+    for (int i = series.length - 1; i >= 0; i--) {
+      if (series[i] != null) return series[i];
+    }
+    return null;
+  }
+
+  /// 超卖拐头判定：前一根 RSI < [oversold] 且 当前根 RSI > 前一根。
+  /// 长度不足时返回 (rsi: null, oversoldTurningUp: false)。
+  ({double? rsi, bool oversoldTurningUp}) rsiTurningUp(
+    List<KlineData> klines, {
+    int period = 14,
+    double oversold = 30,
+  }) {
+    final series = _rsiSeries(klines, period: period);
+    double? prev;
+    double? curr;
+    for (int i = series.length - 1; i >= 0; i--) {
+      if (series[i] != null) {
+        if (curr == null) {
+          curr = series[i];
+        } else if (prev == null) {
+          prev = series[i];
+          break;
+        }
+      }
+    }
+    if (prev == null || curr == null) {
+      return (rsi: curr, oversoldTurningUp: false);
+    }
+    final turning = (prev < oversold) && (curr > prev);
+    return (rsi: curr, oversoldTurningUp: turning);
+  }
+
+  /// 最近 swing high 索引：high 严格大于左右各 [lookback] 根。找不到返回 null。
+  int? swingHigh(List<KlineData> klines, {int lookback = 2}) {
+    final n = klines.length;
+    for (int i = n - 1 - lookback; i >= lookback; i--) {
+      final h = klines[i].high;
+      bool isSwing = true;
+      for (int j = 1; j <= lookback; j++) {
+        if (!(h > klines[i - j].high) || !(h > klines[i + j].high)) {
+          isSwing = false;
+          break;
+        }
+      }
+      if (isSwing) return i;
+    }
+    return null;
+  }
+
+  /// 最近 swing low 索引：low 严格小于左右各 [lookback] 根。找不到返回 null。
+  int? swingLow(List<KlineData> klines, {int lookback = 2}) {
+    final n = klines.length;
+    for (int i = n - 1 - lookback; i >= lookback; i--) {
+      final l = klines[i].low;
+      bool isSwing = true;
+      for (int j = 1; j <= lookback; j++) {
+        if (!(l < klines[i - j].low) || !(l < klines[i + j].low)) {
+          isSwing = false;
+          break;
+        }
+      }
+      if (isSwing) return i;
+    }
+    return null;
+  }
 }
