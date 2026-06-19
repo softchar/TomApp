@@ -111,14 +111,21 @@ class ReboundAlertService {
       _signalsBySymbol[c.symbol] ?? {},
     );
 
+    // 提取最近最多 20 根收盘价用于 sparkline 渲染
+    final closes = window.length > 20
+        ? window.sublist(window.length - 20).map((k) => k.close).toList()
+        : window.map((k) => k.close).toList();
+
     // 6. 将 mtfScore 加到 signal.score（clamp 0-100）并更新 provider
     if (signal != null) {
       final enriched = signal.copyWith(
         score: (signal.score + mtfScore).clamp(0, 100),
       );
-      _provider.upsert(c.symbol, c.timeframe, enriched);
+      _provider.upsert(c.symbol, c.timeframe, enriched,
+          recentCloses: closes);
     } else {
-      _provider.upsert(c.symbol, c.timeframe, null);
+      _provider.upsert(c.symbol, c.timeframe, null,
+          recentCloses: closes);
     }
   }
 

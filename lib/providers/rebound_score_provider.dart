@@ -9,6 +9,9 @@ class ReboundScoreProvider extends ChangeNotifier {
   /// symbol → timeframe → signal（只读暴露）
   final Map<String, Map<String, ReboundSignal?>> _signalsBySymbol = {};
 
+  /// symbol → timeframe → 最近 N 根收盘价（用于 sparkline 渲染）
+  final Map<String, Map<String, List<double>>> _recentClosesBySymbol = {};
+
   /// 不可变视图（UI 读取）
   Map<String, Map<String, ReboundSignal?>> get signalsBySymbol =>
       Map.unmodifiable(_signalsBySymbol);
@@ -31,10 +34,21 @@ class ReboundScoreProvider extends ChangeNotifier {
   /// 所有有信号的 symbol 集合。
   Set<String> get activeSymbols => _signalsBySymbol.keys.toSet();
 
+  /// 获取最近收盘价（用于 sparkline 渲染）。无数据返回 null。
+  List<double>? getRecentCloses(String symbol, String tf) =>
+      _recentClosesBySymbol[symbol]?[tf];
+
   /// 更新单个信号 + 通知监听者（Phase 4 UI rebuild）。
-  void upsert(String symbol, String tf, ReboundSignal? signal) {
+  ///
+  /// [recentCloses] 为可选最近收盘价列表，用于 sparkline 渲染。不传则保持现有数据。
+  void upsert(String symbol, String tf, ReboundSignal? signal,
+      {List<double>? recentCloses}) {
     _signalsBySymbol.putIfAbsent(symbol, () => {});
     _signalsBySymbol[symbol]![tf] = signal;
+    if (recentCloses != null) {
+      _recentClosesBySymbol.putIfAbsent(symbol, () => {});
+      _recentClosesBySymbol[symbol]![tf] = recentCloses;
+    }
     notifyListeners();
   }
 
@@ -52,12 +66,14 @@ class ReboundScoreProvider extends ChangeNotifier {
   /// watchlist churn：移除下架合约的所有信号。
   void removeSymbol(String symbol) {
     _signalsBySymbol.remove(symbol);
+    _recentClosesBySymbol.remove(symbol);
     notifyListeners();
   }
 
   /// 断连时清空所有信号。
   void clear() {
     _signalsBySymbol.clear();
+    _recentClosesBySymbol.clear();
     notifyListeners();
   }
 }
