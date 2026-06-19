@@ -20,15 +20,15 @@ dependencies:
   sqflite: ^2.3.0
   path: ^1.8.0
   fl_chart: ^1.2.0
-
-dependency_overrides:
-  vector_math: ^2.2.0
   flutter_chen_kchart: ^2.0.4
   shimmer: ^3.0.0
   # Phase 6 data.binance.vision ZIP 解压用，本阶段先装入
   archive: ^4.0.2
   drift: ^2.19.1+1
   sqlite3_flutter_libs: ^0.5.42
+
+dependency_overrides:
+  vector_math: ^2.2.0
 
 dev_dependencies:
   flutter_test:
