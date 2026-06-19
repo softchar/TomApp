@@ -38,7 +38,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: 指标基础（ATR/RSI/Bollinger/swing + SDK 升级 + drift schema）** - 一切 downstream 最早依赖；纯 additive、零触达 pump/chart；同时在此完成 SDK 升级 + drift/fl_chart 依赖 + drift 表 schema
 - [ ] **Phase 2: 反弹检测器 + 评分 + 共振（纯函数，零 I/O）** - 单一信号逻辑真源，live 与 backtest 共用；接入任何 I/O 前 100% 单测覆盖
 - [ ] **Phase 3: 实时监控接线（sharded combined-stream WS + 编排器 + Provider）** - 最重基础设施改造：1600 stream 拆连接池、`k.x==true` 硬断言、重连 REST 回填重算、warm-up、mark price、watchlist churn
-- [ ] **Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）** - provider 状态已存在，UI 纯消费；可与 Phase 5 并行；drill-down 复用 KlineScreen
+- [x] **Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）** - provider 状态已存在，UI 纯消费；可与 Phase 5 并行；drill-down 复用 KlineScreen (completed 2026-06-19)
 - [ ] **Phase 5: 推送提醒（分级 + 冷却 + 归并 + 总量上限）** - 「不可误报刷屏」最后一道防线；可与 Phase 4 并行
 - [ ] **Phase 6: 回测验证（event-driven 引擎 + 偏差防护 + 报告披露）** - 必须排 detector（Phase 2）锁定后，保证回测对 live 有效；lookahead-analysis + 双曲线 + 四项披露
 
@@ -110,11 +110,11 @@ Plans:
   3. 文案全文 grep 无「买入/强买/信号」等执行性词，统一为「监控候选」+ 固定风险提示（防虚假信心，Pitfall 13）
   4. 点击信号下钻到既有 `KlineScreen`（复用，最小改动接受初始标注参数），高亮检测到的下跌+拉回窗口
 
-**Plans**: 1/2 plans executed
+**Plans**: 2/2 plans complete
 Plans:
 
 - [x] 04-01-PLAN.md — fl_chart 0.65→1.2 升级 + macd_chart_widget 迁移
-- [ ] 04-02-PLAN.md — ReboundDashboardScreen 看板 UI（TabBar + 信号列表 + sparkline + KlineScreen 下钻）
+- [x] 04-02-PLAN.md — ReboundDashboardScreen 看板 UI（TabBar + 信号列表 + sparkline + KlineScreen 下钻）
 
 **UI hint**: yes
 
@@ -156,7 +156,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 | 1. 指标基础 | 1/1 | Complete | 2026-06-19 |
 | 2. 反弹检测器 + 评分 + 共振 | 2/2 | Complete | 2026-06-19 |
 | 3. 实时监控接线 | 2/2 | Complete | 2026-06-19 |
-| 4. 实时看板 UI | 1/2 | In Progress|  |
+| 4. 实时看板 UI | 2/2 | Complete   | 2026-06-19 |
 | 5. 推送提醒 | 0/0 | Not started | - |
 | 6. 回测验证 | 0/0 | Not started | - |
 

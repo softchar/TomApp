@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: 多周期合约反弹监控
 current_phase: 4
 current_phase_name: ui-tab-sparkline
-status: executing
+status: verifying
 stopped_at: Plan 04-01 complete — fl_chart升级+MACD兼容验证
-last_updated: "2026-06-19T11:20:06.120Z"
+last_updated: "2026-06-19T11:35:22.517Z"
 last_activity: 2026-06-19
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 67
 ---
 
 # Project State
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-19)
 
 Phase: 4 (ui-tab-sparkline) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-19 — Phase 4 execution started
 
 Progress: [█████████░] 86% (3/6 phases, 6 plans complete)
@@ -54,6 +54,7 @@ Progress: [█████████░] 86% (3/6 phases, 6 plans complete)
 
 *Updated after each plan completion*
 | Phase 04-ui-tab-sparkline P01 | 20min | 3 tasks | 2 files |
+| Phase 04-ui-tab-sparkline P02 | 6min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,10 @@ Recent decisions affecting current work:
 - [04-01]: 通过 dependency_overrides 将 vector_math 强制升至 ^2.2.0 解决 flutter_test 的 2.1.4 约束冲突
 - [Roadmap]: 6 阶段结构（指标→检测器→监控→看板|提醒→回测），INDIC+DETECT 为 gating prerequisite、BACKTEST 必须排 detector 锁定后
 - [Roadmap]: 检测器必须纯函数、live 与 backtest 共用同一份代码（单一真源）
+- [Phase ?]: fl_chart 1.2 保留 Fl 前缀类型名——迷你 sparkline 使用 FlGridData/FlBorderData/FlTitlesData
+- [Phase ?]: warm-up 状态追踪通过 Provider warmingUpSymbols + AlertService O(4) per kline——避免 O(n×4) 扫描
+- [Phase ?]: 下钻高亮时间戳通过 signal 索引 + timeframe duration 反推——不精确但无需额外数据字段
+- [Phase ?]: 看板按需启动 ReboundAlertService，dispose 时停止——避免 app 启动时建立 1600 路 WS
 
 ### Pending Todos
 
@@ -86,7 +91,7 @@ v2 范围（已登记，不在本路线图）：参数扫描增强（SCAN-01/02/
 
 ## Session Continuity
 
-Last session: 2026-06-19
+Last session: 2026-06-19T11:35:13.537Z
 Stopped at: Completed 04-01-PLAN.md — fl_chart升级+MACD兼容验证
 Resume file: None
 Next: `04-02-PLAN.md` 待执行（ReboundDashboardScreen 看板 UI）

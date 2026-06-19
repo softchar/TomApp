@@ -42,10 +42,10 @@
 
 - [x] **DASH-01**: 按周期分 Tab（15m/1h/4h/日）的实时反弹信号看板
 - [x] **DASH-02**: 按评分排序，显示币种/周期/跌幅/回补%/评分/迷你 sparkline
-- [ ] **DASH-03**: 标注死猫风险（图标/颜色）+ 止损参考位
-- [ ] **DASH-04**: 显示 warm-up 状态（未就绪不展示信号）
-- [ ] **DASH-05**: 文案统一「监控候选」+ 风险提示（禁用「买入/强买/信号」措辞）
-- [ ] **DASH-06**: 点击信号下钻到 K 线详情（复用 KlineScreen）
+- [x] **DASH-03**: 标注死猫风险（图标/颜色）+ 止损参考位
+- [x] **DASH-04**: 显示 warm-up 状态（未就绪不展示信号）
+- [x] **DASH-05**: 文案统一「监控候选」+ 风险提示（禁用「买入/强买/信号」措辞）
+- [x] **DASH-06**: 点击信号下钻到 K 线详情（复用 KlineScreen）
 
 ### ALERT — 推送提醒
 
@@ -125,10 +125,10 @@
 | MONITOR-08 | Phase 3 | Pending |
 | DASH-01 | Phase 4 | Complete |
 | DASH-02 | Phase 4 | Complete |
-| DASH-03 | Phase 4 | Pending |
-| DASH-04 | Phase 4 | Pending |
-| DASH-05 | Phase 4 | Pending |
-| DASH-06 | Phase 4 | Pending |
+| DASH-03 | Phase 4 | Complete |
+| DASH-04 | Phase 4 | Complete |
+| DASH-05 | Phase 4 | Complete |
+| DASH-06 | Phase 4 | Complete |
 | ALERT-01 | Phase 5 | Pending |
 | ALERT-02 | Phase 5 | Pending |
 | ALERT-03 | Phase 5 | Pending |
