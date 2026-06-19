@@ -19,7 +19,7 @@ TomApp 是一款 Flutter 加密货币交易辅助应用，聚焦异常行情的�
 - ✓ **PUMP-01**: 实时检测拉盘（pump）行情 — 现有引擎
 - ✓ **DATA-01**: Binance 行情数据接入（REST + WebSocket 实时流） — 现有
 - ✓ **DATA-02**: 实时市场数据分析与展示 — 现有
-- ✓ **APP-01**: Flutter 3.24 + Riverpod 应用框架与基础 UI — 现有
+- ✓ **APP-01**: Flutter 3.24 + `provider` 6.1.0（ChangeNotifier）应用框架与基础 UI — 现有
 
 ### Active
 
@@ -42,15 +42,15 @@ TomApp 是一款 Flutter 加密货币交易辅助应用，聚焦异常行情的�
 
 ## Context
 
-- **Brownfield 项目**：TomApp 已有 pump detection 引擎、Binance REST/WebSocket 接入、Flutter + Riverpod 框架。详细代码库映射见 `.planning/codebase/`（ARCHITECTURE.md / STACK.md / CONVENTIONS.md / CONCERNS.md）。
+- **Brownfield 项目**：TomApp 已有 pump detection 引擎、Binance REST/WebSocket 接入、Flutter + `provider`（ChangeNotifier）框架。详细代码库映射见 `.planning/codebase/`（ARCHITECTURE.md / STACK.md / CONVENTIONS.md / CONCERNS.md）。
 - **本工作流** `contract-quick-rebound` 新增「合约快速反弹监控」模块，**复用现有行情基础设施**，不重造轮子。
 - **策略设计**：详见本里程碑 `REQUIREMENTS.md` 与 `ROADMAP.md`。核心是「下跌后快速拉回」的 V 型反弹检测，ATR 归一化、多周期共振、评分排序。
 - **已知技术债/关注点**：见 `.planning/codebase/CONCERNS.md`。
 
 ## Constraints
 
-- **Tech stack**: Flutter 3.24 / Dart 3.6 / Riverpod 状态管理 — 现有栈，必须沿用
-- **架构**: 4 层 UI → Provider → Service → Data — 新模块须遵循
+- **Tech stack**: Flutter 3.24 / Dart 3.6 / `provider` 6.1.0（ChangeNotifier）状态管理 — 现有栈，必须沿用（⚠️ 注：CLAUDE.md 误写为 Riverpod，实际是 `provider`）
+- **架构**: 4 层 UI → Provider(ChangeNotifier) → Service → Data — 新模块须遵循
 - **行情源**: Binance USDT 永续合约，WebSocket kline 流 — K 线收盘增量计算
 - **实时性**: 信号须在 K 线收盘后尽快计算并更新看板/触发提醒
 - **语言**: UI 与文档中文优先（见 CLAUDE.md）
@@ -66,6 +66,7 @@ TomApp 是一款 Flutter 加密货币交易辅助应用，聚焦异常行情的�
 | v1 不做自动下单 | 自动执行风险最高，先回测验证信号有效性 | — Pending |
 | 所有阈值标为「起步值」，由回测模块校准 | 市场无完美参数；回测 + 参数扫描即校准引擎 | — Pending |
 | 工作流名用 ASCII slug `contract-quick-rebound` | GSD 名称策略只接受 ASCII；中文 slug 为空会破坏路由 | ✓ Good |
+| 状态管理沿用现有 `provider`（非 Riverpod） | pubspec 实际为 `provider 6.1.0`；CLAUDE.md 记载有误，以 pubspec + codebase map 为准 | ✓ Good |
 
 ## Current Milestone: v1.0 多周期合约反弹监控
 
