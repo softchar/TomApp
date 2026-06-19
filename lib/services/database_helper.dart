@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -9,8 +10,16 @@ class DatabaseHelper {
 
   DatabaseHelper._internal();
 
+  /// 测试专用：注入数据库路径（如 [inMemoryDatabasePath]）以验证 onCreate / onUpgrade 迁移。
+  @visibleForTesting
+  DatabaseHelper.forTesting(this._dbPath);
+
+  /// 可注入的数据库路径（null 时用默认 getDatabasesPath()/_databaseName）。
+  String? _dbPath;
+
   static const String _databaseName = 'tomapp.db';
-  static const int _databaseVersion = 3;
+  // v4：新增 drift 管理的 klines / backtest_runs / backtest_trades 三表。
+  static const int _databaseVersion = 4;
   static int get currentVersion => _databaseVersion;
 
   Database? _database;
@@ -23,8 +32,7 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, _databaseName);
+    final path = _dbPath ?? join(await getDatabasesPath(), _databaseName);
 
     return await openDatabase(
       path,
@@ -87,6 +95,9 @@ class DatabaseHelper {
     await db.execute('''
       CREATE INDEX idx_updated_at ON futures_symbols(updated_at)
     ''');
+
+    // Phase 1 新增：drift 管理的三表（onCreate 全新安装路径，per BLOCKER 2 / D-07）。
+    await _createDriftTables(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -124,6 +135,61 @@ class DatabaseHelper {
       await db.execute('CREATE INDEX idx_status ON futures_symbols(status)');
       await db.execute('CREATE INDEX idx_updated_at ON futures_symbols(updated_at)');
     }
+
+    if (oldVersion < 4) {
+      // Phase 1：drift 管理的三表（onUpgrade 升级路径，per BLOCKER 2）。
+      await _createDriftTables(db);
+    }
+  }
+
+  /// 创建 drift 管理的三张表（klines / backtest_runs / backtest_trades）。
+  ///
+  /// onCreate（全新安装）与 onUpgrade(oldVersion<4)（升级）两条路径都调用本方法，
+  /// 确保 drift 三表在两条路径都被创建（per BLOCKER 2）。这与既有 kline_cache 仅出现在
+  /// onUpgrade 的 pre-existing 不一致不同——drift 三表刻意双路径都建，避免全新安装缺表。
+  ///
+  /// 表名/列名与 drift 生成的 schema（snake_case 表名）保持一致，使 drift DAO 与
+  /// sqflite 原生访问在 Phase 3/6 指向同一物理表（per ARCHITECTURE.md 共存策略）。
+  Future<void> _createDriftTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS klines (
+        symbol TEXT NOT NULL,
+        interval TEXT NOT NULL,
+        openTime INTEGER NOT NULL,
+        open REAL NOT NULL,
+        high REAL NOT NULL,
+        low REAL NOT NULL,
+        close REAL NOT NULL,
+        volume REAL NOT NULL,
+        closeTime INTEGER NOT NULL,
+        PRIMARY KEY (symbol, interval, openTime)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS backtest_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        params TEXT NOT NULL,
+        startedAt INTEGER NOT NULL,
+        stats TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS backtest_trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        runId INTEGER NOT NULL,
+        symbol TEXT NOT NULL,
+        entryTime INTEGER NOT NULL,
+        entryPrice REAL NOT NULL,
+        exitTime INTEGER,
+        exitPrice REAL,
+        side TEXT NOT NULL,
+        pnl REAL NOT NULL,
+        rMultiple REAL NOT NULL,
+        FOREIGN KEY (runId) REFERENCES backtest_runs(id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   Future<void> close() async {

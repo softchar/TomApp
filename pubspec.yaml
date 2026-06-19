@@ -34,6 +34,7 @@ dev_dependencies:
   mockito: ^5.4.0
   build_runner: ^2.4.0
   drift_dev: ^2.19.1
+  sqflite_common_ffi: ^2.3.5
 
 flutter:
   uses-material-design: true
