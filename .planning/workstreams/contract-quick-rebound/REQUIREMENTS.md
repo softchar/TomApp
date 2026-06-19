@@ -40,8 +40,8 @@
 
 ### DASH — 实时看板
 
-- [ ] **DASH-01**: 按周期分 Tab（15m/1h/4h/日）的实时反弹信号看板
-- [ ] **DASH-02**: 按评分排序，显示币种/周期/跌幅/回补%/评分/迷你 sparkline
+- [x] **DASH-01**: 按周期分 Tab（15m/1h/4h/日）的实时反弹信号看板
+- [x] **DASH-02**: 按评分排序，显示币种/周期/跌幅/回补%/评分/迷你 sparkline
 - [ ] **DASH-03**: 标注死猫风险（图标/颜色）+ 止损参考位
 - [ ] **DASH-04**: 显示 warm-up 状态（未就绪不展示信号）
 - [ ] **DASH-05**: 文案统一「监控候选」+ 风险提示（禁用「买入/强买/信号」措辞）
@@ -123,8 +123,8 @@
 | MONITOR-06 | Phase 3 | Pending |
 | MONITOR-07 | Phase 3 | Pending |
 | MONITOR-08 | Phase 3 | Pending |
-| DASH-01 | Phase 4 | Pending |
-| DASH-02 | Phase 4 | Pending |
+| DASH-01 | Phase 4 | Complete |
+| DASH-02 | Phase 4 | Complete |
 | DASH-03 | Phase 4 | Pending |
 | DASH-04 | Phase 4 | Pending |
 | DASH-05 | Phase 4 | Pending |
@@ -144,6 +144,7 @@
 | BACKTEST-07 | Phase 6 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 38 total
 - Mapped to phases: 38 ✓
 - Unmapped: 0
