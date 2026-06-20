@@ -368,9 +368,11 @@ class BacktestEngine {
     final negativePnl = trades
         .where((t) => t.pnl < 0)
         .fold<double>(0, (s, t) => s + t.pnl);
+    // profitFactor（WR-02）：与 ReportGenerator.generate 保持一致的边界处理。
+    // 无亏损且有盈利 → infinity；无亏损也无盈利（全 0 PnL）→ 0.0。
     final profitFactor = negativePnl.abs() > 0
         ? positivePnl / negativePnl.abs()
-        : double.infinity;
+        : (positivePnl > 0 ? double.infinity : 0.0);
 
     // 权益曲线
     final equityCurveZeroCost =
