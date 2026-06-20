@@ -99,19 +99,10 @@ class WalkForward {
     // 按月份分桶
     final months = _splitByMonth(allKlines);
     if (months.length < 2) {
-      // 不足 2 个月，跑一个折
-      final result = await _runFold(
-        foldIndex: 0,
-        trainKlines: allKlines,
-        testKlines: allKlines,
-        paramGrid: paramGrid,
-        engine: engine,
-        config: config,
-        trainMonthEnd: months.length,
-        testMonth: months.length,
-        fundingRateHistory: fundingRateHistory,
-      );
-      return [result];
+      // 数据不足时返回空 folds 列表，由 aggregateOutOfSample 生成空报告（WR-01）。
+      // 退化为单折使用 train == test 的全量数据会得到 In-Sample 结果，
+      // 违反 D-10/D-11「仅报告 Out-of-Sample 指标」约束。
+      return [];
     }
 
     final results = <FoldResult>[];
