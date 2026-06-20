@@ -139,4 +139,39 @@ void main() {
       expect(provider.getRecentCloses('B', '4h'), isNull);
     });
   });
+
+  group('扫描状态字段 (04-03)', () {
+    test('默认值：scanRound=0, trackedCount=0, lastScanTime=null', () {
+      final p = ReboundScoreProvider();
+      expect(p.scanRound, 0);
+      expect(p.trackedCount, 0);
+      expect(p.lastScanTime, isNull);
+      p.dispose();
+    });
+
+    test('updateScanState 更新字段并触发 notifyListeners', () {
+      final p = ReboundScoreProvider();
+      int n = 0;
+      p.addListener(() => n++);
+      final now = DateTime(2024, 6, 20, 12, 30);
+      p.updateScanState(round: 5, trackedCount: 12, lastScanTime: now);
+      expect(p.scanRound, 5);
+      expect(p.trackedCount, 12);
+      expect(p.lastScanTime, now);
+      expect(n, 1, reason: '应触发一次 notifyListeners');
+      p.dispose();
+    });
+
+    test('updateScanState lastScanTime 为 null 时保留旧值', () {
+      final p = ReboundScoreProvider();
+      final t1 = DateTime(2024, 6, 20, 12);
+      p.updateScanState(round: 1, trackedCount: 3, lastScanTime: t1);
+      // 再次更新不传 lastScanTime → 保留旧值
+      p.updateScanState(round: 2, trackedCount: 5, lastScanTime: null);
+      expect(p.scanRound, 2);
+      expect(p.trackedCount, 5);
+      expect(p.lastScanTime, t1, reason: 'null 应保留旧值');
+      p.dispose();
+    });
+  });
 }
