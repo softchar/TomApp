@@ -13,6 +13,7 @@ import 'package:tomapp/models/kline_data.dart';
 import 'package:tomapp/services/drift_database.dart';
 import 'package:tomapp/services/rebound/backtest_engine.dart';
 import 'package:tomapp/services/rebound/data_import_service.dart';
+import 'package:tomapp/services/rebound/funding_rate_service.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/trade_simulator.dart';
 import 'package:tomapp/services/rebound/walk_forward.dart';
@@ -185,11 +186,27 @@ class BacktestProvider extends ChangeNotifier {
         tradeSimulator: tradeSimulator,
       );
 
+      // 资金费率历史预拉取（CR-02）：构建 {fundingTime(ms): rate} 透传给引擎。
+      // 拉取失败时退化为空 map（引擎不扣资金费），不阻断回测主流程。
+      Map<int, double> fundingRateHistory = {};
+      try {
+        final fundingRateService = FundingRateService();
+        await fundingRateService.prefetch(
+          _config.symbols,
+          _config.startDate,
+          _config.endDate,
+        );
+        fundingRateHistory = fundingRateService.buildHistoryMap();
+      } catch (e) {
+        debugPrint('[BacktestProvider] 资金费率预拉取失败，跳过资金费扣费: $e');
+      }
+
       final folds = await walkForward.runWalkForward(
         allKlines: allKlines,
         paramGrid: paramGrid,
         engine: engine,
         config: _config,
+        fundingRateHistory: fundingRateHistory,
       );
 
       if (_cancelled) {

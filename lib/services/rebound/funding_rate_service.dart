@@ -143,6 +143,23 @@ class FundingRateService {
     _cache.clear();
   }
 
+  /// 构建回测引擎所需的 fundingRateHistory 映射。
+  ///
+  /// 返回 {fundingTime(ms): fundingRate}，合并所有缓存 symbol 的费率数据。
+  /// 引擎按 fundingTime 精确查找结算时刻的费率。
+  ///
+  /// 应在 [prefetch] 完成后调用。
+  Map<int, double> buildHistoryMap() {
+    final map = <int, double>{};
+    for (final rates in _cache.values) {
+      for (final rate in rates) {
+        // 同一 fundingTime 跨 symbol 可能重复，保留最后写入（按 symbol 顺序）
+        map[rate.fundingTime] = rate.fundingRate;
+      }
+    }
+    return map;
+  }
+
   /// 缓存中已有的 symbol 数量。
   int get cacheSize => _cache.length;
 

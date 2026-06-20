@@ -81,6 +81,8 @@ class WalkForward {
   /// [paramGrid] 参数组合列表。
   /// [engine] 回测引擎实例。
   /// [config] 回测配置。
+  /// [fundingRateHistory] 资金费率历史 {fundingTime(ms): rate}，透传给引擎
+  ///   计算 D-05 资金费扣费（CR-02）。
   ///
   /// 返回 3 个 FoldResult。数据不足时降级处理（不崩溃）。
   Future<List<FoldResult>> runWalkForward({
@@ -88,6 +90,7 @@ class WalkForward {
     required List<ReboundParams> paramGrid,
     required BacktestEngine engine,
     required BacktestConfig config,
+    Map<int, double>? fundingRateHistory,
   }) async {
     if (allKlines.isEmpty || paramGrid.isEmpty) {
       return [];
@@ -106,6 +109,7 @@ class WalkForward {
         config: config,
         trainMonthEnd: months.length,
         testMonth: months.length,
+        fundingRateHistory: fundingRateHistory,
       );
       return [result];
     }
@@ -140,6 +144,7 @@ class WalkForward {
         config: config,
         trainMonthEnd: trainEndMonthIdx,
         testMonth: testMonthIdx,
+        fundingRateHistory: fundingRateHistory,
       );
 
       results.add(foldResult);
@@ -205,6 +210,7 @@ class WalkForward {
     required BacktestConfig config,
     required int trainMonthEnd,
     required int testMonth,
+    Map<int, double>? fundingRateHistory,
   }) async {
     ReboundParams? bestParams;
     List<BacktestTrade> bestTrades = [];
@@ -220,6 +226,7 @@ class WalkForward {
         params: params,
         config: config,
         klines: fullKlines,
+        fundingRateHistory: fundingRateHistory,
       );
 
       // 只提取 test window 内的交易
