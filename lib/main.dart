@@ -21,6 +21,7 @@ import 'providers/pump_list_provider.dart';
 import 'providers/kline_provider.dart';
 import 'providers/market_overview_provider.dart';
 import 'providers/rebound_score_provider.dart';
+import 'providers/alert_settings_provider.dart';
 import 'services/contract_sync_settings.dart';
 import 'screens/main_navigation.dart';
 import 'utils/app_navigation.dart';
@@ -335,6 +336,15 @@ class MyApp extends StatelessWidget {
         // 避免 app 启动时建立 1600 路 WS 连接）
         ChangeNotifierProvider(
           create: (_) => ReboundScoreProvider(),
+        ),
+        ),
+        // Phase 5：反弹提醒设置 Provider（TF 开关 + 阈值）
+        ChangeNotifierProvider(
+          create: (_) {
+            final p = AlertSettingsProvider();
+            p.load(); // 异步持久化加载，不阻塞 create 返回
+            return p;
+          },
         ),
       ],
       child: Consumer<ThemeProvider>(
