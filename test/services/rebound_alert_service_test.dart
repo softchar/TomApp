@@ -8,6 +8,7 @@ import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/rebound/rebound_alert_service.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
+import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
 import 'package:tomapp/services/binance_api_service.dart';
 
 /// Phase 3 / D-04：ReboundAlertService 编排器集成测试。
@@ -143,4 +144,213 @@ void main() {
       sub.cancel();
     });
   });
+
+  group('ReboundAlertService 动态精跟 (04-03)', () {
+    late _MockStreamService mockStream;
+    late ReboundAlertService svc;
+
+    setUp(() {
+      mockStream = _MockStreamService(BinanceApiService());
+      svc = ReboundAlertService(
+        streamService: mockStream,
+        detector: detector,
+        provider: provider,
+      );
+    });
+
+    tearDown(() {
+      svc.stop();
+    });
+
+    // Test 1 [命中加入精跟]
+    test('命中加入精跟：onHits 触发 trackSymbols → subscribe 被调用', () async {
+      final scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+
+      scanner.onHits!({'ABCUSDT', 'XYZUSDT'});
+      await Future<void>.delayed(Duration.zero);
+
+      expect(mockStream.subscribedSymbols, containsAll(['ABCUSDT', 'XYZUSDT']));
+      expect(svc.trackedCount, 2);
+    });
+
+    // Test 2 [评分回落退出精跟]
+    test('评分回落退出精跟：连续 missThreshold 根未命中 → unsubscribe', () async {
+      provider.upsert('ABCUSDT', '1h', _makeSignal('ABCUSDT', '1h'));
+      final scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+      scanner.onHits!({'ABCUSDT'});
+      await Future<void>.delayed(Duration.zero);
+      expect(svc.trackedCount, 1);
+
+      // 连续 3 根收盘未命中（flat window → detector 返回 null）
+      final flatWindow = List.generate(
+          30,
+          (i) => KlineData(
+              time: DateTime(2024, 1, 1, 0, i),
+              open: 100.0,
+              high: 101.0,
+              low: 99.0,
+              close: 100.0,
+              volume: 10.0));
+      for (int i = 0; i < 3; i++) {
+        svc.handleClosedKline(
+            ClosedKline(symbol: 'ABCUSDT', timeframe: '1h', window: flatWindow));
+      }
+      await Future<void>.delayed(Duration.zero);
+
+      expect(svc.trackedCount, 0, reason: '连续 3 根未命中应退出精跟');
+      expect(mockStream.unsubscribedSymbols, contains('ABCUSDT'));
+    });
+
+    // Test 3 [FIFO 驱逐，per B2]
+    test('FIFO 驱逐：精跟 30 个时第 31 个命中 → 首加入者被驱逐', () async {
+      final scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+
+      final first30 = List.generate(30, (i) => 'S${i}USDT').toSet();
+      scanner.onHits!(first30);
+      await Future<void>.delayed(Duration.zero);
+      expect(svc.trackedCount, 30);
+
+      scanner.onHits!({'NEWUSDT'});
+      await Future<void>.delayed(Duration.zero);
+
+      expect(svc.trackedCount, 30, reason: '集合大小仍为 30');
+      expect(mockStream.unsubscribedSymbols, contains('S0USDT'),
+          reason: 'FIFO 驱逐最早加入的 S0USDT');
+      expect(mockStream.subscribedSymbols, contains('NEWUSDT'));
+    });
+
+    // Test 4 [跨周期保留]
+    test('跨周期保留：1h 命中（15m 未命中）仍进入精跟', () async {
+      final scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+
+      scanner.onHits!({'ZZZUSDT'});
+      await Future<void>.delayed(Duration.zero);
+
+      expect(svc.trackedCount, 1);
+      expect(mockStream.subscribedSymbols, contains('ZZZUSDT'));
+    });
+
+    // Test 5 [start 空初始列表]
+    test('start([])：建立空占位连接，无 symbol warmUp', () async {
+      final scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+
+      expect(mockStream.connectCalledWith, isEmpty,
+          reason: 'start([]) 应用空 symbols 调 connect');
+      expect(svc.trackedCount, 0);
+    });
+
+    // Test 6 [stop 清理]
+    test('stop 清理：清空精跟集合', () async {
+      final scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      scanner.start();
+      await svc.start([]);
+      scanner.onHits!({'AUSDT', 'BUSDT'});
+      await Future<void>.delayed(Duration.zero);
+      expect(svc.trackedCount, 2);
+
+      await svc.stop();
+      expect(svc.trackedCount, 0, reason: 'stop 后精跟集合应清空');
+    });
+
+    // Test 8 [trackedCount getter，per B3]
+    test('trackedCount：0/5/30 个精跟分别返回 0/5/30', () async {
+      expect(svc.trackedCount, 0);
+      final scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+
+      scanner.onHits!({'A1USDT', 'A2USDT', 'A3USDT', 'A4USDT', 'A5USDT'});
+      await Future<void>.delayed(Duration.zero);
+      expect(svc.trackedCount, 5);
+
+      final more = List.generate(25, (i) => 'B${i}USDT').toSet();
+      scanner.onHits!(more);
+      await Future<void>.delayed(Duration.zero);
+      expect(svc.trackedCount, 30);
+    });
+  });
+}
+
+/// 构造一个非空 ReboundSignal 用于 provider 预填。
+ReboundSignal _makeSignal(String sym, String tf) => ReboundSignal(
+      symbol: sym,
+      timeframe: tf,
+      dropMagnitude: 2.5,
+      recoveryRatio: 0.7,
+      speed: 2,
+      confluenceFilters: {},
+      score: 80,
+      deadCatRiskScore: 20,
+      entryPrice: 98,
+      swingLowPrice: 89,
+      swingHighPrice: 100,
+      dropStartIndex: 20,
+      dropEndIndex: 22,
+      recoveryEndIndex: 24,
+      timestamp: DateTime(2024),
+    );
+
+/// 子类化 ReboundKlineStreamService 以 spy subscribe/unsubscribe 调用。
+class _MockStreamService extends ReboundKlineStreamService {
+  final List<String> subscribedSymbols = [];
+  final List<String> unsubscribedSymbols = [];
+  List<String> connectCalledWith = const [];
+
+  _MockStreamService(super.api);
+
+  @override
+  Future<void> connect(List<String> symbols, List<String> timeframes) async {
+    connectCalledWith = List<String>.from(symbols);
+    // 不实际建 WS（避免测试联网），仅记录
+    _setSubscribedTimeframesForTest(timeframes);
+  }
+
+  @override
+  Future<void> subscribe(List<String> addSymbols) async {
+    subscribedSymbols.addAll(addSymbols);
+  }
+
+  @override
+  void unsubscribe(List<String> removeSymbols) {
+    unsubscribedSymbols.addAll(removeSymbols);
+  }
 }

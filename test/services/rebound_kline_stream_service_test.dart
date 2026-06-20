@@ -191,5 +191,28 @@ void main() {
       await Future<void>.value();
       expect(receivedEvents.first.symbol, 'BTCUSDT');
     });
+
+    // Test 8 [增量 subscribe，per D7]: subscribe 后 symbol 进入订阅集合 + streamToConn 索引更新
+    test('subscribe：增量订阅把 symbol 加入集合、streamToConn 索引正确', () async {
+      await service.connect(['BTCUSDT'], ['15m', '1h']);
+      await service.subscribe(['ABCUSDT']);
+      expect(service.isSymbolSubscribed('ABCUSDT'), isTrue,
+          reason: 'subscribe 后 ABCUSDT 应在订阅集合中');
+      // streamToConn 索引应包含 ABCUSDT 的所有 TF stream
+      expect(service.streamToConnContains('abcusdt@kline_15m'), isTrue);
+      expect(service.streamToConnContains('abcusdt@kline_1h'), isTrue);
+    });
+
+    // Test 9 [增量 unsubscribe，per D7]: unsubscribe 后索引与订阅集合同步移除
+    test('unsubscribe：取消订阅后 symbol 与索引同步移除', () async {
+      await service.connect(['BTCUSDT'], ['15m']);
+      await service.subscribe(['ETHUSDT']);
+      expect(service.isSymbolSubscribed('ETHUSDT'), isTrue);
+      service.unsubscribe(['ETHUSDT']);
+      expect(service.isSymbolSubscribed('ETHUSDT'), isFalse,
+          reason: 'unsubscribe 后 ETHUSDT 应不在订阅集合');
+      expect(service.streamToConnContains('ethusdt@kline_15m'), isFalse,
+          reason: 'unsubscribe 后索引应清理');
+    });
   });
 }
