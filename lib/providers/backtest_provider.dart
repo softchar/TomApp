@@ -113,6 +113,7 @@ class BacktestProvider extends ChangeNotifier {
         _status = BacktestStatus.idle;
         notifyListeners();
         await db.close();
+        db = null; // 防止 finally 块 double-close（CR-01）
         return;
       }
 
@@ -121,6 +122,7 @@ class BacktestProvider extends ChangeNotifier {
         _errorMessage = '未获取到任何历史 K 线数据';
         notifyListeners();
         await db.close();
+        db = null; // 防止 finally 块 double-close（CR-01）
         return;
       }
 
@@ -130,11 +132,12 @@ class BacktestProvider extends ChangeNotifier {
         if (_cancelled) {
           _status = BacktestStatus.idle;
           notifyListeners();
-          await db.close();
+          await db!.close();
+          db = null; // 防止 finally 块 double-close（CR-01）
           return;
         }
 
-        final rows = await (db.select(db.klines)
+        final rows = await (db!.select(db.klines)
               ..where((t) => t.symbol.equals(symbol))
               ..where((t) => t.interval.equals('15m'))
               ..orderBy([(t) => OrderingTerm(expression: t.openTime)]))
@@ -152,7 +155,7 @@ class BacktestProvider extends ChangeNotifier {
         }
       }
 
-      await db.close();
+      await db!.close();
       db = null;
 
       if (_cancelled) {
