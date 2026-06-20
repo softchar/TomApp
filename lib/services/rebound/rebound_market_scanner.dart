@@ -90,6 +90,10 @@ class ReboundMarketScanner {
   /// 扫描周期列表。
   final List<String> timeframes;
 
+  /// 只保留反弹结束位置在最近 N 根 K 线内的信号（per 04-03 用户需求：
+  /// 仅检测最近发生的反弹，而非窗口内的历史反弹）。默认 6 根。
+  final int recentBars;
+
   // ─── 回调（可选）──────────────────────────────────────────
   final void Function(ScanResult result)? onScanComplete;
   /// 命中回调（可重新赋值——编排器 attachScanner 时接管，per D4）。
@@ -128,6 +132,7 @@ class ReboundMarketScanner {
     this.scanInterval = const Duration(seconds: 60),
     this.klineLimit = 99,
     this.timeframes = monitoredTimeframes,
+    this.recentBars = 6,
     this.onScanComplete,
     this.onHits,
     this.onProgress,
@@ -138,11 +143,13 @@ class ReboundMarketScanner {
 
   /// 启动定时轮询（首轮立即触发）。
   void start() {
+    // 幂等：dashboard 与 alertService.start() 都可能调用 start()，
+    // 不加守卫会触发两轮首轮扫描竞争重入保护 → 请求翻倍触发 429（per 04-REVIEW CR-01）
+    if (_timer != null) return;
     // 首轮立即触发
     Timer.run(() {
       if (!_scanning) _safeScan();
     });
-    _timer?.cancel();
     _timer = Timer.periodic(scanInterval, (_) {
       if (!_scanning) _safeScan();
     });
@@ -275,9 +282,19 @@ class ReboundMarketScanner {
           symbol: symbol,
           timeframe: tf,
         );
+        // 只保留最近 recentBars 根内结束的反弹（per 04-03）；
+        // window.length < recentBars（新上市/短窗口）时无"最近 N 根"概念，
+        // 降级为不接受（数据不足），避免负阈值放行历史反弹（per 04-REVIEW WR-02）
+        final threshold = window.length >= recentBars
+            ? window.length - recentBars
+            : window.length;
+        final effective =
+            (signal == null || signal.recoveryEndIndex >= threshold)
+                ? signal
+                : null;
         signalsBySymbolTf.putIfAbsent(symbol, () => {});
-        signalsBySymbolTf[symbol]![tf] = signal;
-        if (signal != null) {
+        signalsBySymbolTf[symbol]![tf] = effective;
+        if (effective != null) {
           hits.add(symbol);
         }
       } catch (e) {

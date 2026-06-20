@@ -86,6 +86,10 @@ class ReboundAlertService {
   Future<void> trackSymbols(Set<String> hits) async {
     final newTracked =
         hits.difference(_trackedSymbols.toSet());
+    if (newTracked.isNotEmpty) {
+      _provider.addLog(
+          '精跟 +${newTracked.length}（共 ${_trackedSymbols.length + newTracked.length}，上限 $maxTracked）');
+    }
     for (final sym in newTracked) {
       // FIFO 驱逐
       while (_trackedSymbols.length >= maxTracked) {

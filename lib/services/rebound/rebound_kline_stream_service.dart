@@ -117,19 +117,23 @@ class ReboundKlineStreamService {
   /// 期间标记 warming-up 不触发信号。
   Future<void> connect(List<String> symbols, List<String> timeframes) async {
     _subscribedSymbols.addAll(symbols);
+    // 防御别名：subscribe 首次建立时会传入 _subscribedTimeframes 同一引用，
+    // 若直接 clear+addAll(timeframes) 会先清空 timeframes 自身、再 addAll 空，
+    // 导致后续 ~/tfs.length 除零。先复制。
+    final tfs = List<String>.from(timeframes);
     _subscribedTimeframes
       ..clear()
-      ..addAll(timeframes);
+      ..addAll(tfs);
 
     // 按标的分片（per D-02）
-    final totalStreams = symbols.length * timeframes.length;
+    final totalStreams = symbols.length * tfs.length;
     final shardSize = (totalStreams / 2).ceil().clamp(1, maxStreamsPerConnection);
-    final symbolChunks = _chunkSymbols(symbols, shardSize ~/ timeframes.length);
+    final symbolChunks = _chunkSymbols(symbols, shardSize ~/ tfs.length);
 
     for (final chunk in symbolChunks) {
       final streams = <String>[];
       for (final sym in chunk) {
-        for (final tf in timeframes) {
+        for (final tf in tfs) {
           streams.add('${sym.toLowerCase()}@kline_$tf');
         }
       }

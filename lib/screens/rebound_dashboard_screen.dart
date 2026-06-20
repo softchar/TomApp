@@ -6,12 +6,19 @@ import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
 import 'package:tomapp/services/rebound/rebound_alert_service.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
+import 'package:tomapp/services/rebound/rebound_confluence_scorer.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
 import 'package:tomapp/services/binance_api_service.dart';
 import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/exchange_info_service.dart';
 import 'kline_screen.dart';
+
+/// 测试期宽松模式开关（`flutter run --dart-define=LOOSE_PARAMS=true` 启用）。
+///
+/// 为前期快速观察反弹数据：切换到 [ReboundParams.looseForTesting]（大幅降低
+/// 检测门槛 + 关闭共振过滤）。正式使用不传此 define 即恢复严格默认阈值。
+const _looseForTesting = bool.fromEnvironment('LOOSE_PARAMS');
 
 /// 反弹监控看板页面。
 ///
@@ -76,7 +83,10 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
               .map((s) => s.symbol)
               .toList();
         },
-        params: const ReboundParams(),
+        // 测试期宽松参数（LOOSE_PARAMS=true 时启用，方便快速看到反弹数据）
+        params: _looseForTesting
+            ? ReboundParams.looseForTesting
+            : const ReboundParams(),
         // 扫描进度 → Provider 扫描状态字段（供横幅显示）；onProgress 为 final，构造时注入。
         onProgress: (p) {
           if (!mounted) return;
@@ -86,10 +96,37 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
             lastScanTime: p.lastScanTime,
           );
         },
+        // 扫描命中的反弹信号立即写入 Provider，让看板即时显示——
+        // 否则要等 WS 精跟收到下一根 15m 收盘 K 线（可能数分钟）才会出现信号。
+        // WS 精跟后续通过 handleClosedKline 用实时价刷新 + 补 sparkline 数据。
+        onScanComplete: (result) {
+          if (!mounted) return;
+          var count = 0;
+          for (final symEntry in result.signalsBySymbolTf.entries) {
+            // 与 handleClosedKline 一致：应用跨周期共振加分（单周期 mtf=0；
+            // 多周期恢复时两路径同分，避免 UI 得分闪烁，per 04-REVIEW WR-07）
+            final mtfScore =
+                ReboundConfluenceScorer.scoreMultiTimeframe(symEntry.value);
+            for (final tfEntry in symEntry.value.entries) {
+              final signal = tfEntry.value;
+              if (signal != null) {
+                final enriched = mtfScore > 0
+                    ? signal.copyWith(
+                        score: (signal.score + mtfScore).clamp(0, 100))
+                    : signal;
+                provider.upsert(symEntry.key, tfEntry.key, enriched);
+                count++;
+              }
+            }
+          }
+          provider.addLog(
+              '第 ${result.round} 轮完成 · 命中 ${result.hitSymbols.length} · 写入 $count 信号');
+        },
       );
 
       _alertService!.attachScanner(_scanner!);
       await _alertService!.start([]); // 空初始，精跟集合由 scanner 命中驱动
+      provider.addLog('扫描器已启动 · 全市场 15m 轮询中（首轮约 40-50s）');
       _scanner!.start();
       if (mounted) setState(() => _isInitializing = false);
     } catch (e) {
@@ -111,6 +148,13 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline, size: 20),
+            tooltip: '字段说明',
+            onPressed: () => _showLegendDialog(context),
+          ),
+        ],
       ),
       body: _isInitializing
           ? const Center(
@@ -144,6 +188,7 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                   children: [
                     _buildScanBanner(),
                     Expanded(child: _buildSignalList()),
+                    _buildLogPanel(),
                     _buildRiskWarning(),
                   ],
                 ),
@@ -226,6 +271,118 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
     );
   }
 
+  /// 调试日志面板（测试期）：底部固定高度，倒序显示最新日志，可清空。
+  Widget _buildLogPanel() {
+    return Consumer<ReboundScoreProvider>(
+      builder: (context, provider, _) {
+        final logs = provider.logs;
+        return Container(
+          height: 140,
+          color: Colors.black,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.terminal, size: 12, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text('日志（${logs.length}）',
+                      style:
+                          const TextStyle(color: Colors.grey, fontSize: 11)),
+                  const Spacer(),
+                  if (logs.isNotEmpty)
+                    GestureDetector(
+                      onTap: provider.clearLogs,
+                      child: const Icon(Icons.delete_outline,
+                          size: 14, color: Colors.grey),
+                    ),
+                ],
+              ),
+              const Divider(height: 6, thickness: 0.5, color: Colors.grey),
+              Expanded(
+                child: logs.isEmpty
+                    ? const Center(
+                        child: Text('暂无日志',
+                            style:
+                                TextStyle(color: Colors.grey, fontSize: 11)))
+                    : ListView.builder(
+                        reverse: true,
+                        itemCount: logs.length,
+                        itemBuilder: (context, index) {
+                          final line = logs[logs.length - 1 - index];
+                          return Text(line,
+                              style: const TextStyle(
+                                color: Colors.greenAccent,
+                                fontSize: 10.5,
+                                fontFamily: 'monospace',
+                              ));
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 字段说明对话框：解释每行各元素的含义与计算方式。
+  void _showLegendDialog(BuildContext context) {
+    Widget item(String title, String desc) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(desc,
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            ],
+          ),
+        );
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('字段说明', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              item('评分（圆形徽章）',
+                  '反弹综合强度分 0-100，越高越强。由下跌幅度、拉回力度、速度等加权得出；≥70 深绿、≥40 橙、<40 灰。'),
+              item('跌幅 ×ATR',
+                  '下跌段的幅度，用 ATR（平均真实波幅）倍数表示，如 2.5×ATR。用波动率归一化，跨币可比。'),
+              item('回补%',
+                  '从反弹低点回升的比例（0-100%）。越高表示反弹力度越强、收复跌幅越多。'),
+              item('sparkline 折线',
+                  '该币最近收盘价走势（涨绿跌红，无轴/网格）。一眼判断反弹形态。'),
+              item('死猫风险（图标）',
+                  '死猫反弹（虚假反弹）概率 0-100。≥70 红骷髅高风险、≥40 橙警告、<40 绿勾较安全。基于跌幅深度、是否放量、所处支撑位等判断。'),
+              item('止损参考位',
+                  '反弹起点的 swing low（近期低点），作为参考止损价。跌破该位则反弹逻辑失效。'),
+              const SizedBox(height: 6),
+              const Text(
+                  '注：当前为测试期宽松参数（LOOSE_PARAMS），门槛大幅降低，候选偏多、质量偏低，正式阈值待 Phase 6 回测校准。',
+                  style: TextStyle(color: Colors.orange, fontSize: 11)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('明白了', style: TextStyle(color: Colors.blue)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRiskWarning() {
     return Container(
       width: double.infinity,
@@ -246,6 +403,22 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
 }
 
 /// 单行信号卡片。
+/// 带小标签的字段列（值 + 下方小灰字标签），让每行各数值自解释。
+Widget _labeled(Widget child, String label, double width) {
+  return SizedBox(
+    width: width,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        child,
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 9)),
+      ],
+    ),
+  );
+}
+
 class _SignalRow extends StatelessWidget {
   final ReboundSignal signal;
 
@@ -265,10 +438,11 @@ class _SignalRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // 币种
               SizedBox(
-                width: 56,
+                width: 48,
                 child: Text(
                   signal.symbol.replaceAll('USDT', ''),
                   style: const TextStyle(
@@ -281,36 +455,32 @@ class _SignalRow extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               // 评分
-              _ScoreBadge(score: signal.score),
-              const SizedBox(width: 6),
+              _labeled(_ScoreBadge(score: signal.score), '评分', 40),
+              const SizedBox(width: 4),
               // 跌幅
-              SizedBox(
-                width: 52,
-                child: Text(
-                  '${signal.dropMagnitude.toStringAsFixed(1)}×ATR',
-                  style: TextStyle(color: Colors.red[300], fontSize: 12),
-                ),
+              _labeled(
+                Text('${signal.dropMagnitude.toStringAsFixed(1)}×ATR',
+                    style: TextStyle(color: Colors.red[300], fontSize: 12)),
+                '跌幅',
+                50,
               ),
               // 回补%
-              SizedBox(
-                width: 42,
-                child: Text(
-                  '${(signal.recoveryRatio * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(color: Colors.green[300], fontSize: 12),
-                ),
+              _labeled(
+                Text('${(signal.recoveryRatio * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(color: Colors.green[300], fontSize: 12)),
+                '回补',
+                38,
               ),
               // 死猫风险
-              _DeadCatIndicator(score: signal.deadCatRiskScore),
-              const SizedBox(width: 4),
+              _labeled(
+                  _DeadCatIndicator(score: signal.deadCatRiskScore), '死猫', 30),
+              const SizedBox(width: 2),
               // 止损参考位
-              SizedBox(
-                width: 52,
-                child: Text(
-                  '止损 ${signal.swingLowPrice.toStringAsFixed(3)}',
-                  style:
-                      TextStyle(color: Colors.grey[600], fontSize: 10),
-                  overflow: TextOverflow.ellipsis,
-                ),
+              _labeled(
+                Text(signal.swingLowPrice.toStringAsFixed(3),
+                    style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+                '止损',
+                46,
               ),
               const Spacer(),
               // 迷你 sparkline

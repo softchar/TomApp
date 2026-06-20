@@ -74,6 +74,31 @@ class ReboundScoreProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── 调试日志（测试期，看板底部面板显示）─────────────────────
+  final List<String> _logs = [];
+
+  /// 最近日志（只读视图，UI 底部面板渲染）。
+  List<String> get logs => List.unmodifiable(_logs);
+
+  /// 追加一条日志（带时间戳，超过 200 条裁剪旧条目）。
+  void addLog(String msg) {
+    final now = DateTime.now();
+    final ts = '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}';
+    _logs.add('$ts  $msg');
+    if (_logs.length > 200) {
+      _logs.removeRange(0, _logs.length - 200);
+    }
+    notifyListeners();
+  }
+
+  /// 清空日志。
+  void clearLogs() {
+    _logs.clear();
+    notifyListeners();
+  }
+
   /// 更新单个信号 + 通知监听者（Phase 4 UI rebuild）。
   ///
   /// [recentCloses] 为可选最近收盘价列表，用于 sparkline 渲染。不传则保持现有数据。
