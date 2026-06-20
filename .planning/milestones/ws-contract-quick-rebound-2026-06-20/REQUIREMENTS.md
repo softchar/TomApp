@@ -58,13 +58,13 @@
 
 ### BACKTEST — 回测验证
 
-- [ ] **BACKTEST-01**: 导入 Binance 历史 K 线（data.binance.vision ZIP 批量 + REST gap-fill）
-- [ ] **BACKTEST-02**: event-driven 逐 bar 回放（复用同一 ReboundDetector，保证对 live 有效）
-- [ ] **BACKTEST-03**: 模拟交易（进场 / 止损 swing-low−0.3×ATR / 止盈 61.8% 与 100% Fib，含手续费资金费滑点）
-- [ ] **BACKTEST-04**: 报告同屏显示 胜率/平均 R/盈亏比/最大回撤 + 样本数 N
-- [ ] **BACKTEST-05**: 零成本 vs 含成本双曲线对比
-- [ ] **BACKTEST-06**: 通过 lookahead-analysis 检验（防前视偏差）
-- [ ] **BACKTEST-07**: 强制四项披露（前视已检/含成本/标的池/out-of-sample）+ 免责声明（打 30-50% 折扣，非投资建议）
+- [x] **BACKTEST-01**: 导入 Binance 历史 K 线（data.binance.vision ZIP 批量 + REST gap-fill）
+- [x] **BACKTEST-02**: event-driven 逐 bar 回放（复用同一 ReboundDetector，保证对 live 有效）
+- [x] **BACKTEST-03**: 模拟交易（进场 / 止损 swing-low−0.3×ATR / 止盈 61.8% 与 100% Fib，含手续费资金费滑点）
+- [x] **BACKTEST-04**: 报告同屏显示 胜率/平均 R/盈亏比/最大回撤 + 样本数 N
+- [x] **BACKTEST-05**: 零成本 vs 含成本双曲线对比
+- [x] **BACKTEST-06**: 通过 lookahead-analysis 检验（防前视偏差）
+- [x] **BACKTEST-07**: 强制四项披露（前视已检/含成本/标的池/out-of-sample）+ 免责声明（打 30-50% 折扣，非投资建议）
 
 ## v2 Requirements
 
@@ -135,13 +135,13 @@
 | ALERT-04 | Phase 5 | Pending |
 | ALERT-05 | Phase 5 | Pending |
 | ALERT-06 | Phase 5 | Pending |
-| BACKTEST-01 | Phase 6 | Pending |
-| BACKTEST-02 | Phase 6 | Pending |
-| BACKTEST-03 | Phase 6 | Pending |
-| BACKTEST-04 | Phase 6 | Pending |
-| BACKTEST-05 | Phase 6 | Pending |
-| BACKTEST-06 | Phase 6 | Pending |
-| BACKTEST-07 | Phase 6 | Pending |
+| BACKTEST-01 | Phase 6 | Complete |
+| BACKTEST-02 | Phase 6 | Complete |
+| BACKTEST-03 | Phase 6 | Complete |
+| BACKTEST-04 | Phase 6 | Complete |
+| BACKTEST-05 | Phase 6 | Complete |
+| BACKTEST-06 | Phase 6 | Complete |
+| BACKTEST-07 | Phase 6 | Complete |
 
 **Coverage:**
 

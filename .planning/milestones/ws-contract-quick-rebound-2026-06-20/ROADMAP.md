@@ -182,7 +182,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 | 3. 实时监控接线 | 2/2 | Complete | 2026-06-19 |
 | 4. 实时看板 UI | 3/3 | Complete    | 2026-06-19 |
 | 5. 推送提醒 | 3/3 | Complete   | 2026-06-20 |
-| 6. 回测验证 | 3/3 | Complete   | 2026-06-20 |
+| 6. 回测验证 | 3/3 | Complete    | 2026-06-20 |
 
 ---
 
