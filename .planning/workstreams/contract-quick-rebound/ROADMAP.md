@@ -40,7 +40,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 3: 实时监控接线（sharded combined-stream WS + 编排器 + Provider）** - 最重基础设施改造：1600 stream 拆连接池、`k.x==true` 硬断言、重连 REST 回填重算、warm-up、mark price、watchlist churn
 - [x] **Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）** - provider 状态已存在，UI 纯消费；可与 Phase 5 并行；drill-down 复用 KlineScreen (completed 2026-06-19)
 - [x] **Phase 5: 推送提醒（分级 + 冷却 + 归并 + 总量上限）** - 「不可误报刷屏」最后一道防线；可与 Phase 4 并行 (completed 2026-06-20)
-- [ ] **Phase 6: 回测验证（event-driven 引擎 + 偏差防护 + 报告披露）** - 必须排 detector（Phase 2）锁定后，保证回测对 live 有效；lookahead-analysis + 双曲线 + 四项披露
+- [x] **Phase 6: 回测验证（event-driven 引擎 + 偏差防护 + 报告披露）** - 必须排 detector（Phase 2）锁定后，保证回测对 live 有效；lookahead-analysis + 双曲线 + 四项披露 (completed 2026-06-20)
 
 ## Phase Details
 
@@ -156,7 +156,7 @@ Plans:
   4. 报告同屏显示胜率 / 平均 R / 盈亏比 / 最大回撤 + 样本数 N；参数扫描强制 walk-forward，只报 out-of-sample，权重业务先验固定不进扫描（Pitfall 2/3/10）
   5. 强制四项披露（前视已检 / 含成本 / 标的池说明 / out-of-sample）+ 免责声明（回测需打 30-50% 折扣，不构成投资建议），缺一项不让展示（Pitfall 13）
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 Plans:
 **Wave 1**
 
@@ -168,7 +168,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-03-PLAN.md — BacktestProvider + BacktestScreen + ProfileScreen 入口 + 集成接线
+- [x] 06-03-PLAN.md — BacktestProvider + BacktestScreen + ProfileScreen 入口 + 集成接线
 
 ## Progress
 
@@ -182,7 +182,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 | 3. 实时监控接线 | 2/2 | Complete | 2026-06-19 |
 | 4. 实时看板 UI | 3/3 | Complete    | 2026-06-19 |
 | 5. 推送提醒 | 3/3 | Complete   | 2026-06-20 |
-| 6. 回测验证 | 2/3 | In Progress|  |
+| 6. 回测验证 | 3/3 | Complete   | 2026-06-20 |
 
 ---
 
