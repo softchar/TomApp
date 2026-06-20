@@ -60,19 +60,19 @@ void main() {
     });
 
     test('TF 开关持久化到 SharedPreferences', () async {
-      await provider.setTimeframeToggle('1h', false);
+      // 修改 15m 开关为 false（当前 monitoredTimeframes 唯一 TF）
+      await provider.setTimeframeToggle('15m', false);
+      expect(provider.getTimeframeToggle('15m'), isFalse);
 
       // 重建 Provider 触发 SP 重新读取（模拟 app 重启）
-      provider.dispose();
       final newProvider = AlertSettingsProvider();
       await newProvider.load();
 
-      // 注意：15m 是 monitoredTimeframes 中的唯一 TF，但 1h 不是
-      // 因为当前仅监控 15m，所以测试只验证已知 TF
+      // 从 SP 读取应保持 false
       expect(
         newProvider.getTimeframeToggle('15m'),
-        isTrue,
-        reason: '未修改的 TF 应保持默认 true',
+        isFalse,
+        reason: 'SharedPreferences 持久化的 false 值应在重新加载后保持',
       );
 
       newProvider.dispose();
