@@ -55,6 +55,9 @@ class ReboundKlineStreamService {
   /// 已订阅的 timeframes
   final List<String> _subscribedTimeframes = [];
 
+  /// streamName → 持有该 stream 的 connection 索引（per D7，增量 subscribe/unsubscribe 用）
+  final Map<String, _ShardConnection> _streamToConn = {};
+
   /// 收盘 K 线事件流（仅 k.x==true，per D-03）
   final StreamController<ClosedKline> _closedKlineController =
       StreamController<ClosedKline>.broadcast();
@@ -62,6 +65,43 @@ class ReboundKlineStreamService {
 
   /// 是否已连接
   bool get isConnected => _connections.isNotEmpty;
+
+  /// 测试用：是否已订阅指定 symbol。
+  @visibleForTesting
+  bool isSymbolSubscribed(String symbol) => _subscribedSymbols.contains(symbol);
+
+  /// 测试用：_streamToConn 索引是否包含指定 streamName。
+  @visibleForTesting
+  bool streamToConnContains(String streamName) =>
+      _streamToConn.containsKey(streamName);
+
+  /// 测试用：注入已订阅 timeframes（绕过 connect 建立真实 WS）。
+  @visibleForTesting
+  void setSubscribedTimeframesForTest(List<String> tfs) {
+    _subscribedTimeframes
+      ..clear()
+      ..addAll(tfs);
+  }
+
+  /// 测试用：种子一个空 connection 占位 + 注入初始 symbols，绕过真实 WS。
+  /// 让 [subscribe] / [unsubscribe] 走增量路径（conn.channel 为 null，
+  /// sink.add 被空安全操作吞掉，不实际发 JSON）。
+  @visibleForTesting
+  void seedConnectionForTest(List<String> symbols, List<String> tfs) {
+    _subscribedTimeframes
+      ..clear()
+      ..addAll(tfs);
+    _subscribedSymbols.addAll(symbols);
+    final conn = _ShardConnection(<String>[]);
+    _connections.add(conn);
+    for (final sym in symbols) {
+      for (final tf in tfs) {
+        final stream = '${sym.toLowerCase()}@kline_$tf';
+        conn.streams.add(stream);
+        _streamToConn[stream] = conn;
+      }
+    }
+  }
 
   /// 当前是否正在 warm-up
   bool isWarmingUp(String symbol, String tf) =>
@@ -95,7 +135,103 @@ class ReboundKlineStreamService {
       final conn = _ShardConnection(streams);
       _connections.add(conn);
       await _openConnection(conn);
+      // 填充 _streamToConn 索引（per D7，增量 subscribe/unsubscribe 用）
+      for (final stream in streams) {
+        _streamToConn[stream] = conn;
+      }
     }
+  }
+
+  /// 增量订阅 symbol（per D7 方案 A：增量 SUBSCRIBE，不重建连接）。
+  ///
+  /// - 若尚未建立连接（_subscribedSymbols 为空），走 [connect] 全量启动。
+  /// - 否则对每个新 symbol × 每个已订阅 timeframe 生成 streamName，
+  ///   选容量未满的 connection 通过 SUBSCRIBE JSON 实时订阅，
+  ///   并触发 warm-up。
+  Future<void> subscribe(List<String> addSymbols) async {
+    final fresh =
+        addSymbols.where((s) => !_subscribedSymbols.contains(s)).toList();
+    if (fresh.isEmpty) return;
+
+    // 首次建立：走 connect 全量启动
+    if (!isConnected && _subscribedSymbols.isEmpty) {
+      await connect(fresh, _subscribedTimeframes.isEmpty
+          ? const ['15m', '1h', '4h', '1d']
+          : _subscribedTimeframes);
+      return;
+    }
+
+    final tfs = _subscribedTimeframes.isEmpty
+        ? const ['15m', '1h', '4h', '1d']
+        : _subscribedTimeframes;
+    for (final sym in fresh) {
+      // 找一个容量未满的 connection（或新建一个）
+      _ShardConnection conn = _ensureCapacity(tfs.length);
+      final newStreams = <String>[];
+      for (final tf in tfs) {
+        final streamName = '${sym.toLowerCase()}@kline_$tf';
+        newStreams.add(streamName);
+        conn.streams.add(streamName);
+        _streamToConn[streamName] = conn;
+      }
+      _subscribedSymbols.add(sym);
+      // 发实时 SUBSCRIBE JSON（复用 _openConnection L140-144 的消息格式）
+      conn.channel?.sink.add(jsonEncode({
+        'method': 'SUBSCRIBE',
+        'params': newStreams,
+        'id': DateTime.now().millisecondsSinceEpoch,
+      }));
+      // warm-up 后台触发（fire-and-forget：warmUp 内部已 swallow 失败；
+      // 不 await 以免阻塞 subscribe 调用方，并避免测试因真实 REST 调用挂起）
+      warmUp(sym, tfs);
+    }
+  }
+
+  /// 增量取消订阅 symbol（per D7 方案 A：增量 UNSUBSCRIBE）。
+  ///
+  /// 对每个 removeSymbol × timeframes 生成 streamName，查 [_streamToConn]
+  /// 取其 connection，发 UNSUBSCRIBE JSON，清理索引、buffer、warm-up 状态。
+  void unsubscribe(List<String> removeSymbols) {
+    final tfs = _subscribedTimeframes.isEmpty
+        ? const ['15m', '1h', '4h', '1d']
+        : _subscribedTimeframes;
+    for (final sym in removeSymbols) {
+      for (final tf in tfs) {
+        final streamName = '${sym.toLowerCase()}@kline_$tf';
+        final conn = _streamToConn.remove(streamName);
+        if (conn != null) {
+          conn.streams.remove(streamName);
+          conn.channel?.sink.add(jsonEncode({
+            'method': 'UNSUBSCRIBE',
+            'params': [streamName],
+            'id': DateTime.now().millisecondsSinceEpoch,
+          }));
+        }
+      }
+      _subscribedSymbols.remove(sym);
+      _buffers.remove(sym);
+      for (final tf in tfs) {
+        _warmingUp.remove('$sym:$tf');
+      }
+    }
+  }
+
+  /// 找到容量未满的 connection；若全部已满则新建一个空 connection（占位）。
+  _ShardConnection _ensureCapacity(int streamsPerSymbol) {
+    for (final conn in _connections) {
+      if (conn.streams.length + streamsPerSymbol <= maxStreamsPerConnection) {
+        return conn;
+      }
+    }
+    // 新建空 connection 占位（_openConnection 需至少 1 个 stream 才能建 URI；
+    // 这里插入一个占位 stream，避免 URI 解析失败；实际 SUBSCRIBE 后由 sink 追加）
+    final placeholder = _ShardConnection(<String>['__placeholder__@noop']);
+    _connections.add(placeholder);
+    // 异步建立连接（不 await，subscribe 调用方不阻塞）
+    _openConnection(placeholder);
+    // 占位 stream 立即移除（真实 stream 由调用方追加）
+    placeholder.streams.clear();
+    return placeholder;
   }
 
   /// 断开所有连接。

@@ -7,6 +7,7 @@ import 'package:tomapp/providers/rebound_score_provider.dart';
 import 'package:tomapp/services/rebound/rebound_confluence_scorer.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
+import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
 
 /// 反弹监控编排器。
 ///
@@ -39,6 +40,21 @@ class ReboundAlertService {
   /// warm-up 中的标的（由 handleClosedKline 更新，传给 provider）
   final Set<String> _warmingSymbols = {};
 
+  /// 04-03 动态精跟：当前精跟中的 symbol 列表（List 保留 FIFO 顺序供驱逐）。
+  final List<String> _trackedSymbols = [];
+
+  /// symbol → 连续未命中（detector 返回 null）计数，达 [missThreshold] 退出精跟。
+  final Map<String, int> _missCountBySymbol = {};
+
+  /// 04-03 扫描器引用（attachScanner 注入，可空）。
+  ReboundMarketScanner? _scanner;
+
+  /// 精跟集合硬上限（per B2，防 WS 连接膨胀）。
+  static const int maxTracked = 30;
+
+  /// 连续未命中阈值（per D3，达此值退出精跟）。
+  static const int missThreshold = 3;
+
   ReboundAlertService({
     required ReboundKlineStreamService streamService,
     required ReboundDetector detector,
@@ -52,22 +68,66 @@ class ReboundAlertService {
   /// 当前订阅的 symbol 列表。
   Set<String> get subscribedSymbols => Set.unmodifiable(_subscribedSymbols);
 
+  /// 当前精跟中的 symbol 数量（per B3，供 Provider/UI 读取）。
+  int get trackedCount => _trackedSymbols.length;
+
+  /// 接入扫描器（per D4，scanner.onHits → trackSymbols）。
+  void attachScanner(ReboundMarketScanner scanner) {
+    _scanner = scanner;
+    scanner.onHits = (hits) => trackSymbols(hits);
+  }
+
+  /// 把命中集合加入精跟（per D3/D7）。
+  ///
+  /// - 差集得到新精跟（避免重复订阅）
+  /// - 超过 [maxTracked] 时按 FIFO 驱逐最早加入者
+  /// - 通过 streamService.subscribe 增量订阅（含 warm-up）
+  Future<void> trackSymbols(Set<String> hits) async {
+    final newTracked =
+        hits.difference(_trackedSymbols.toSet());
+    for (final sym in newTracked) {
+      // FIFO 驱逐
+      while (_trackedSymbols.length >= maxTracked) {
+        final evicted = _trackedSymbols.removeAt(0);
+        await untrackSymbol(evicted);
+      }
+      _trackedSymbols.add(sym);
+      _missCountBySymbol[sym] = 0;
+      await _streamService.subscribe([sym]);
+    }
+  }
+
+  /// 退出精跟：unsubscribe + 移除 provider 信号 + 清未命中计数（per D3）。
+  Future<void> untrackSymbol(String symbol) async {
+    _trackedSymbols.remove(symbol);
+    _streamService.unsubscribe([symbol]);
+    _provider.removeSymbol(symbol);
+    _missCountBySymbol.remove(symbol);
+  }
+
   /// 启动编排器：连接 WS + 订阅收盘事件 + 启动 watchlist churn。
   ///
   /// [symbols]：初始订阅的合约列表。
   /// [timeframes]：监控周期，默认 15m/1h/4h/1d。
+  ///
+  /// 04-03: 若已 attachScanner，传入 symbols 被忽略，改为空占位连接
+  /// （精跟由 scanner 驱动），并启动 scanner timer。
   Future<void> start(
     List<String> symbols, {
     List<String> timeframes = const ['15m', '1h', '4h', '1d'],
   }) async {
-    _subscribedSymbols.addAll(symbols);
+    final initialSymbols = _scanner != null ? const <String>[] : symbols;
+    _subscribedSymbols.addAll(initialSymbols);
 
-    // 标记所有标的为 warm-up 中（UI 显示加载状态）
-    _warmingSymbols.addAll(symbols);
-    _provider.updateWarmingUpSymbols(_warmingSymbols.toSet());
+    if (_scanner != null) {
+      // 标记空集合为 warm-up（实际由 scanner 命中后增量 warm-up）
+    } else {
+      _warmingSymbols.addAll(initialSymbols);
+      _provider.updateWarmingUpSymbols(_warmingSymbols.toSet());
+    }
 
-    // 连接 WS（sharded combined-stream，内部 warm-up）
-    await _streamService.connect(symbols, timeframes);
+    // 连接 WS（scanner 模式下用空占位，后续由 subscribe 增量订阅）
+    await _streamService.connect(initialSymbols, timeframes);
 
     // 订阅收盘事件（k.x==true，per D-03）
     _closedKlineSub = _streamService.closedKlines.listen(handleClosedKline);
@@ -77,6 +137,9 @@ class ReboundAlertService {
       const Duration(hours: 1),
       (_) => _refreshWatchlist(),
     );
+
+    // scanner 模式：启动扫描 timer
+    _scanner?.start();
   }
 
   /// 停止编排器：断开 WS + 取消订阅 + 清空 provider。
@@ -85,9 +148,12 @@ class ReboundAlertService {
     _closedKlineSub = null;
     _watchlistTimer?.cancel();
     _watchlistTimer = null;
+    _scanner?.stop();
     _streamService.disconnect();
     _signalsBySymbol.clear();
     _warmingSymbols.clear();
+    _trackedSymbols.clear();
+    _missCountBySymbol.clear();
     _provider.clear();
   }
 
@@ -149,9 +215,22 @@ class ReboundAlertService {
       );
       _provider.upsert(c.symbol, c.timeframe, enriched,
           recentCloses: closes);
+      // 04-03: 命中 → 重置未命中计数（维持精跟）
+      if (_trackedSymbols.contains(c.symbol)) {
+        _missCountBySymbol[c.symbol] = 0;
+      }
     } else {
       _provider.upsert(c.symbol, c.timeframe, null,
           recentCloses: closes);
+      // 04-03: 连续未命中达 missThreshold → 退出精跟（per D3）
+      if (_trackedSymbols.contains(c.symbol)) {
+        final count = (_missCountBySymbol[c.symbol] ?? 0) + 1;
+        _missCountBySymbol[c.symbol] = count;
+        if (count >= missThreshold) {
+          // fire-and-forget：handleClosedKline 为 sync void，不破坏 stream listener 签名
+          untrackSymbol(c.symbol);
+        }
+      }
     }
   }
 
