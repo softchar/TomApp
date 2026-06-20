@@ -337,7 +337,6 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => ReboundScoreProvider(),
         ),
-        ),
         // Phase 5：反弹提醒设置 Provider（TF 开关 + 阈值）
         ChangeNotifierProvider(
           create: (_) {
