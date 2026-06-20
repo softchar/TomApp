@@ -10,6 +10,17 @@ import '../services/contract_sync_settings.dart';
 import '../services/contract_sync_service.dart';
 import '../providers/kline_provider.dart';
 
+/// 构建时间戳，由 `flutter run --dart-define=BUILD_TIME=...` 注入。
+/// 用于在「我的」页确认手机上运行的究竟是哪一次构建（每次部署都不同）。
+const String _buildTime = String.fromEnvironment('BUILD_TIME', defaultValue: '');
+
+/// 应用版本号（取自 pubspec.yaml）。
+const String _appVersion = 'v1.0.0';
+
+/// 组合显示的版本字符串：无构建时间戳时只显示版本号。
+String get _displayVersion =>
+    _buildTime.isEmpty ? _appVersion : '$_appVersion · $_buildTime';
+
 /// 我的页面
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -329,7 +340,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildInfoItem(
                   icon: Icons.info_outline,
                   title: '应用版本',
-                  trailing: 'v1.0.0',
+                  trailing: _displayVersion,
                 ),
                 const Divider(height: 1),
                 _buildInfoItem(
@@ -460,7 +471,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showAboutDialog(
       context: context,
       applicationName: '币安合约费率',
-      applicationVersion: 'v1.0.0',
+      applicationVersion: _displayVersion,
       applicationIcon: const Icon(
         Icons.show_chart,
         size: 48,
