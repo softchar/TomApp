@@ -1,4 +1,7 @@
-/// 币安合约资金费率模型
+/// 币安合约资金费率模型。
+///
+/// 用于实时行情展示（premiumIndex 端点）和回测历史费率（fundingRate 端点）。
+/// 不可变类，相等性基于 symbol + fundingTime 组合。
 class FundingRate {
   String symbol;
   double fundingRate;
@@ -44,6 +47,21 @@ class FundingRate {
     );
   }
 
+  /// 从币安 /fapi/v1/fundingRate 端点响应创建（回测历史数据用）。
+  ///
+  /// 响应字段：fundingRate(String)、fundingTime(int 毫秒)、symbol(String)。
+  factory FundingRate.fromFundingRateEndpoint(Map<String, dynamic> json) {
+    return FundingRate(
+      symbol: json['symbol'] as String? ?? '',
+      fundingRate:
+          double.tryParse(json['fundingRate']?.toString() ?? '0') ?? 0.0,
+      markPrice: 0.0,
+      indexPrice: 0,
+      estimatedSettleTime: 0.0,
+      fundingTime: json['fundingTime'] as int? ?? 0,
+    );
+  }
+
   /// 获取下一次资金费率时间
   DateTime get nextFundingTime =>
       DateTime.fromMillisecondsSinceEpoch(estimatedSettleTime.toInt());
@@ -83,6 +101,19 @@ class FundingRate {
       'lastUpdate': lastUpdate?.toIso8601String(),
     };
   }
+
+  /// 相等性基于 symbol + fundingTime 组合。
+  /// 同一币种同一结算时刻的费率视为同一条记录。
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is FundingRate &&
+        other.symbol == symbol &&
+        other.fundingTime == fundingTime;
+  }
+
+  @override
+  int get hashCode => Object.hash(symbol, fundingTime);
 
   FundingRate copyWith({
     String? symbol,
