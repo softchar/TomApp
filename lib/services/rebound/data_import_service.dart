@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:archive/archive.dart';
-import 'package:drift/drift.dart' show InsertMode;
+import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:tomapp/models/backtest_config.dart';
@@ -79,7 +79,7 @@ class DataImportService {
   ///
   /// 遍历 config.symbols × ['15m'] 周期，按月下载并批量写入。
   /// 使用 drift batch insert 每批 1000 条，复合主键自动去重。
-  /// 返回成功写入的 K 线总条数。
+  /// 返回实际新增的 K 线条数（不含被 insertOrIgnore 跳过的重复行，WR-05）。
   Future<int> importHistoricalData({
     required AppDatabase db,
     required BacktestConfig config,
@@ -131,6 +131,11 @@ class DataImportService {
                 j,
                 min(j + 1000, klines.length),
               );
+              // 用 batch 前后的总行数差值计算实际新增行数（WR-05）。
+              // 原实现 totalInserted += chunk.length 会把被 insertOrIgnore
+              // 跳过的重复行也算入，导致返回值虚高，调用方 insertedCount == 0
+              // 判断可能误判「有数据」。
+              final countBefore = await _countKlines(db);
               await db.batch((batch) {
                 batch.insertAll(
                   db.klines,
@@ -138,7 +143,8 @@ class DataImportService {
                   mode: InsertMode.insertOrIgnore,
                 );
               });
-              totalInserted += chunk.length;
+              final countAfter = await _countKlines(db);
+              totalInserted += (countAfter - countBefore).clamp(0, chunk.length);
             }
           }
         }
@@ -256,6 +262,14 @@ class DataImportService {
   /// 验证 symbol 格式是否有效。
   bool isValidSymbol(String symbol) {
     return _symbolPattern.hasMatch(symbol);
+  }
+
+  /// 统计 drift Klines 表的总行数（用于计算 insertOrIgnore 实际新增行数，WR-05）。
+  Future<int> _countKlines(AppDatabase db) async {
+    final countExp = db.klines.openTime.count();
+    final query = db.selectOnly(db.klines)..addColumns([countExp]);
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
   }
 
   /// 验证 symbol 格式，无效时抛出 ArgumentError。
