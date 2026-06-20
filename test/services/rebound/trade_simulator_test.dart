@@ -2,8 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tomapp/models/kline_data.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/models/rebound_params.dart';
-import 'package:tomapp/models/position.dart';
-import 'package:tomapp/models/backtest_config.dart';
 import 'package:tomapp/services/rebound/trade_simulator.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/technical_indicators.dart';
