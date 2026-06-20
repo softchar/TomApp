@@ -91,6 +91,112 @@ List<KlineData> vShapedRecovery() {
   return klines;
 }
 
+/// 生成 V 型走势 fixture（快速版）：3 根急跌 + 2 根急弹，配合默认 ReboundParams。
+///
+/// 共 40 根 K 线（10 小时 15m 数据）：
+/// - 前 20 根：平稳波动（warm-up，价格在 ~100 附近小幅浮动）
+/// - 第 21-23 根：急跌（~99 → 85 → 75，跌约 25%，间隔大以确保 swing 检测）
+/// - 第 24-25 根：急弹（75 → 83 → 96，回补高比例）
+/// - 第 26-40 根：继续上涨（巩固反弹形态，确保 close > midpoint）
+///
+/// 设计考虑：下跌和反弹段中每根 bar 的 low 明确递增以使 swingLow 检测能
+/// 找到 bar 23 为最低点。反弹 bar 的 low 比最低点 bar 的 low 高 3+ 单位，
+/// 以确保 swingLow(lookback=2) 能检出最低点。
+List<KlineData> vShapedQuickRecovery() {
+  final klines = <KlineData>[];
+  final baseTime = DateTime(2025, 3, 15, 0, 0);
+  final random = Random(42);
+
+  // 前 20 根：平稳波动（warm-up，窄幅震荡确保 ATR 小）
+  var price = 100.0;
+  for (int i = 0; i < 20; i++) {
+    final open = price;
+    final change = (random.nextDouble() - 0.5) * 0.5; // 微小波动 ±0.5
+    final close = open + change;
+    final high = open > close ? open + 0.3 : close + 0.3;
+    final low = open < close ? open - 0.3 : close - 0.3;
+    klines.add(KlineData(
+      time: baseTime.add(Duration(minutes: 15 * i)),
+      open: open,
+      high: high,
+      low: low > 0 ? low : 0.01,
+      close: close,
+      volume: 80.0 + random.nextDouble() * 40.0,
+    ));
+    price = close;
+  }
+
+  // 第 20-22 根：急跌（3 根内从 ~100 跌到 75，low 逐根降低）
+  // bar 20: high swing, close lower
+  final prev0 = klines[19];
+  klines.add(KlineData(
+    time: baseTime.add(Duration(minutes: 15 * 20)),
+    open: prev0.close,
+    high: prev0.close + 1.5, // 高点（将作为 swingHigh）
+    low: 95.0,
+    close: 96.0,
+    volume: 150.0,
+  ));
+  // bar 21: lower
+  klines.add(KlineData(
+    time: baseTime.add(Duration(minutes: 15 * 21)),
+    open: 96.0,
+    high: 96.5,
+    low: 83.0,
+    close: 85.0,
+    volume: 180.0,
+  ));
+  // bar 22: lowest (V bottom) — low 为整个窗口最低
+  klines.add(KlineData(
+    time: baseTime.add(Duration(minutes: 15 * 22)),
+    open: 85.0,
+    high: 86.0,
+    low: 74.0, // 全 window 最低点
+    close: 75.0,
+    volume: 200.0,
+  ));
+
+  // 第 23-24 根：急弹（2 根内从 75 回补到 96，low 逐根提高）
+  // bar 23: 快速反弹，low 比最低点高 3+ 单位，确保 swingLow 识别最低点
+  klines.add(KlineData(
+    time: baseTime.add(Duration(minutes: 15 * 23)),
+    open: 75.0,
+    high: 85.0,
+    low: 77.0, // 比 bar 22 的 low(74) 高 3，确保不为 swingLow
+    close: 83.0,
+    volume: 250.0,
+  ));
+  // bar 24: 继续反弹，close 远高于 midpoint
+  klines.add(KlineData(
+    time: baseTime.add(Duration(minutes: 15 * 24)),
+    open: 83.0,
+    high: 97.0,
+    low: 81.0,
+    close: 96.0, // > midpoint ≈ (100+74)/2 = 87
+    volume: 300.0,
+  ));
+
+  // 第 25-39 根：继续上涨（巩固反弹形态，确保后续 K 线 close 高于 midpoint）
+  price = 96.0;
+  for (int i = 25; i < 40; i++) {
+    price += 0.3 + random.nextDouble() * 0.5;
+    final open = klines[i - 1].close;
+    final close = price;
+    final high = close + 0.3;
+    final low = open < close ? open - 0.2 : close - 0.3;
+    klines.add(KlineData(
+      time: baseTime.add(Duration(minutes: 15 * i)),
+      open: open,
+      high: high,
+      low: low > 0 ? low : 0.01,
+      close: close,
+      volume: 100.0 + random.nextDouble() * 50.0,
+    ));
+  }
+
+  return klines;
+}
+
 /// 生成模拟资金费率数据，用于 FundingRateService 单元测试。
 ///
 /// 从 [baseTime] 开始每 8 小时一条，共 [count] 条。
