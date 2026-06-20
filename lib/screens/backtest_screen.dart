@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tomapp/models/backtest_config.dart';
+import 'package:tomapp/models/backtest_report.dart';
 import 'package:tomapp/models/backtest_status.dart';
 import 'package:tomapp/providers/backtest_provider.dart';
 import 'package:tomapp/services/theme_provider.dart';
@@ -450,7 +452,7 @@ class _BacktestScreenState extends State<BacktestScreen> {
 
   // ─── 子组件 ────────────────────────────────────────────
 
-  Widget _buildEquityCurveCard(dynamic report) {
+  Widget _buildEquityCurveCard(BacktestReport report) {
     return Card(
       margin: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -488,7 +490,7 @@ class _BacktestScreenState extends State<BacktestScreen> {
     );
   }
 
-  Widget _buildStatsGrid(dynamic report) {
+  Widget _buildStatsGrid(BacktestReport report) {
     final stats = [
       ('胜率', '${(report.winRate * 100).toStringAsFixed(1)}%', report.winRate > 0),
       ('平均 R', report.avgR.toStringAsFixed(2), report.avgR > 0),
@@ -523,7 +525,7 @@ class _BacktestScreenState extends State<BacktestScreen> {
     );
   }
 
-  Widget _buildTradeListCard(dynamic report) {
+  Widget _buildTradeListCard(BacktestReport report) {
     return Card(
       margin: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -583,10 +585,7 @@ class _BacktestScreenState extends State<BacktestScreen> {
     );
   }
 
-  Widget _buildDisclosuresCard(dynamic report, dynamic config) {
-    // 四项披露全部存在才渲染
-    if (report == null) return const SizedBox.shrink();
-
+  Widget _buildDisclosuresCard(BacktestReport report, BacktestConfig config) {
     return Card(
       margin: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
