@@ -131,8 +131,16 @@ Plans:
 
 **Plans**: 3 plans
 Plans:
+**Wave 1**
+
 - [ ] 05-01-PLAN.md — AlertLevel 模型 + AlertThrottler 五道闸门管线 + 单测
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 05-02-PLAN.md — ReboundNotificationService 多渠道通知 + AlertSettingsProvider 配置
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 05-03-PLAN.md — 集成接线：ReboundAlertService + main.dart + ProfileScreen
 
 ### Phase 6: 回测验证（event-driven 引擎 + 偏差防护 + 报告披露）
