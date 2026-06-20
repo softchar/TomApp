@@ -85,7 +85,7 @@ class BacktestEngine {
           double pnl = rMultiple;
           if (config.costsEnabled) {
             pnl = _tradeSimulator.applyTransactionCost(
-                rMultiple, position.entryPrice, exitPrice);
+                rMultiple, position.entryPrice, exitPrice, position.stopLoss);
             pnl -= cumulativeFundingCost;
           }
           trades.add(BacktestTrade(
@@ -120,7 +120,8 @@ class BacktestEngine {
                 double tp1Pnl = tp1R;
                 if (config.costsEnabled) {
                   tp1Pnl = _tradeSimulator.applyTransactionCost(
-                      tp1R, position.entryPrice, position.takeProfit1);
+                      tp1R, position.entryPrice, position.takeProfit1,
+                      position.stopLoss);
                   tp1Pnl -= cumulativeFundingCost * 0.5;
                 }
                 trades.add(BacktestTrade(
@@ -141,7 +142,8 @@ class BacktestEngine {
                 double tp2Pnl = tp2R;
                 if (config.costsEnabled) {
                   tp2Pnl = _tradeSimulator.applyTransactionCost(
-                      tp2R, position.entryPrice, position.takeProfit2);
+                      tp2R, position.entryPrice, position.takeProfit2,
+                      position.stopLoss);
                   tp2Pnl -= cumulativeFundingCost * 0.5;
                 }
                 trades.add(BacktestTrade(
@@ -162,7 +164,8 @@ class BacktestEngine {
                 double tp2Pnl = tp2R;
                 if (config.costsEnabled) {
                   tp2Pnl = _tradeSimulator.applyTransactionCost(
-                      tp2R, position.entryPrice, position.takeProfit2);
+                      tp2R, position.entryPrice, position.takeProfit2,
+                      position.stopLoss);
                   tp2Pnl -= cumulativeFundingCost * 0.5;
                 }
                 trades.add(BacktestTrade(
@@ -183,7 +186,8 @@ class BacktestEngine {
                 double tp1Pnl = tp1R;
                 if (config.costsEnabled) {
                   tp1Pnl = _tradeSimulator.applyTransactionCost(
-                      tp1R, position.entryPrice, position.takeProfit1);
+                      tp1R, position.entryPrice, position.takeProfit1,
+                      position.stopLoss);
                   tp1Pnl -= cumulativeFundingCost * 0.5;
                 }
                 trades.add(BacktestTrade(
@@ -209,7 +213,8 @@ class BacktestEngine {
               double tp1Pnl = tp1R;
               if (config.costsEnabled) {
                 tp1Pnl = _tradeSimulator.applyTransactionCost(
-                    tp1R, position.entryPrice, position.takeProfit1);
+                    tp1R, position.entryPrice, position.takeProfit1,
+                    position.stopLoss);
                 tp1Pnl -= cumulativeFundingCost * 0.5;
               }
               trades.add(BacktestTrade(
@@ -242,7 +247,8 @@ class BacktestEngine {
             double pnl = rMultiple;
             if (config.costsEnabled) {
               pnl = _tradeSimulator.applyTransactionCost(
-                  rMultiple, position.entryPrice, exitPrice);
+                  rMultiple, position.entryPrice, exitPrice,
+                  position.stopLoss);
               pnl -= cumulativeFundingCost;
             }
             trades.add(BacktestTrade(
@@ -293,7 +299,8 @@ class BacktestEngine {
       double pnl = rMultiple;
       if (config.costsEnabled) {
         pnl = _tradeSimulator.applyTransactionCost(
-            rMultiple, position.entryPrice, exitPrice);
+            rMultiple, position.entryPrice, exitPrice,
+            position.stopLoss);
         pnl -= cumulativeFundingCost;
       }
       trades.add(BacktestTrade(

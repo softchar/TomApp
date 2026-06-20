@@ -191,20 +191,22 @@ void main() {
     test('扣费后 pnl 小于纯 R 倍数', () {
       const entryPrice = 100.0;
       const exitPrice = 105.0;
+      const stopLoss = 95.0; // 1R = entryPrice - stopLoss = 5
       const rMultiple = 1.5; // 纯 R 倍数
 
       final pnlWithCost = tradeSimulator.applyTransactionCost(
         rMultiple,
         entryPrice,
         exitPrice,
+        stopLoss,
       );
 
-      // 手续费 + 滑点应扣减
+      // 手续费 + 滑点应扣减（CR-03：成本按 1R = |entryPrice - stopLoss| 换算）
       // entryFee = 100 * 0.0006 = 0.06
       // exitFee = 105 * 0.0006 = 0.063
       // slippage = 100 * 0.001 + 105 * 0.001 = 0.205
-      // totalCost / entryPrice ≈ (0.328 / 100) = 0.00328
-      // pnl = rMultiple - costRatio = 1.5 - 0.00328 ≈ 1.49672
+      // totalCost = 0.328；riskPerR = 5；costInR = 0.328 / 5 = 0.0656
+      // pnl = rMultiple - costInR = 1.5 - 0.0656 ≈ 1.4344
       expect(pnlWithCost, lessThan(rMultiple),
           reason: '含成本 PnL 应小于纯 R 倍数');
       expect(pnlWithCost, greaterThan(1.49),

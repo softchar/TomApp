@@ -109,10 +109,16 @@ class TradeSimulator {
   /// - 滑点 = entryPrice × 0.1% + exitPrice × 0.1%（单边 0.1%）。
   /// - 总成本从 [rMultiple]（R 倍数）中扣除。
   ///
-  /// 注意：[rMultiple] 是 R 倍数而非绝对金额，成本需要转换为 R 单位的等值调整量。
-  /// 简单实现：成本按价格比例直接扣除（使用 entry/exit price 的百分比）。
-  double applyTransactionCost(double rMultiple, double entryPrice,
-      double exitPrice) {
+  /// 注意：[rMultiple] 是 R 倍数而非绝对金额，1R 对应的价格距离
+  /// 为 [entryPrice] - [stopLoss]（入场价到止损价的距离）。
+  /// 因此成本需要先求和为价格金额，再除以 1R 对应的价格距离换算为 R 单位。
+  /// 直接除以 entryPrice 会严重低估成本（约 20 倍量级误差，见 CR-03）。
+  double applyTransactionCost(
+    double rMultiple,
+    double entryPrice,
+    double exitPrice,
+    double stopLoss,
+  ) {
     const takerFeeRate = 0.0006; // 0.06%
     const slippageRate = 0.001; // 0.1% per side
 
@@ -120,10 +126,15 @@ class TradeSimulator {
     final exitFee = exitPrice * takerFeeRate;
     final slippage = entryPrice * slippageRate + exitPrice * slippageRate;
 
-    // 成本转换：成本占 entryPrice 的比例（近似 R 单位扣减）
-    // 保守假设入场时 1R = entryPrice（因为 R 倍数已 normalization）
-    final costRatio = (entryFee + exitFee + slippage) / entryPrice;
-    return rMultiple - costRatio;
+    // 关键修复（CR-03）：1R = |entryPrice - stopLoss|，而非 entryPrice。
+    // 将总成本（价格金额）换算为 R 单位后再从 rMultiple 扣除。
+    final riskPerR = (entryPrice - stopLoss).abs();
+    if (riskPerR <= 0) {
+      // 风险为零时无法换算（理论上不应发生，止损价 ≥ 入场价），跳过扣费
+      return rMultiple;
+    }
+    final costInR = (entryFee + exitFee + slippage) / riskPerR;
+    return rMultiple - costInR;
   }
 
   /// 资金费率扣费（D-05）。
