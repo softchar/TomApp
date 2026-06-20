@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: 多周期合约反弹监控
-current_phase: 04
-current_phase_name: ui-tab-sparkline
-status: executing
-stopped_at: Plan 04-03 complete — 收缩到 15m 单周期 + 看板去 Tab + 全市场扫描精跟；待 /gsd-verify-work 04 人工 UAT
-last_updated: "2026-06-20T01:28:01.981Z"
+current_phase: 5
+current_phase_name: 推送提醒（分级 + 冷却 + 归并 + 总量上限）
+status: 04-03 实现完成（15m 收缩 + 看板去 Tab + 全市场扫描精跟）
+stopped_at: 04-03 实现完成 — 收缩到 15m + 看板去 Tab + 全市场扫描精跟；53 测试全绿、analyze 0 error
+last_updated: "2026-06-20T05:12:55.597Z"
 last_activity: 2026-06-20
-last_activity_desc: 04-03 实现完成（15m 收缩），待人工验收
+last_activity_desc: Phase 04 complete, transitioned to Phase 5
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
   completed_plans: 8
-  percent: 100
+  percent: 67
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-06-19)
 
 ## Current Position
 
-Phase: 04 (ui-tab-sparkline) — 04-03 实现完成，待人工 UAT
-Plan: 3 of 3 (04-03 完成)
+Phase: 5 — 推送提醒（分级 + 冷却 + 归并 + 总量上限）
+Plan: Not started
 Status: 04-03 实现完成（15m 收缩 + 看板去 Tab + 全市场扫描精跟）
-Last activity: 2026-06-20 — 04-03 实现完成，待 /gsd-verify-work 04
+Last activity: 2026-06-20 — Phase 04 complete, transitioned to Phase 5
 
 Progress: [██████████] 100% plans (3/6 phases, 8 plans complete)
 
@@ -40,7 +40,7 @@ Progress: [██████████] 100% plans (3/6 phases, 8 plans compl
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 9
 - Average duration: — (single data point, not yet meaningful)
 - Total execution time: — (Phase 1 executed in a single session)
 
@@ -51,6 +51,7 @@ Progress: [██████████] 100% plans (3/6 phases, 8 plans compl
 | Phase 1 (指标基础) | 1 | complete | — |
 | Phase 2 (检测器+评分) | 2 | complete | — |
 | Phase 3 (WS+编排器) | 2 | complete | — |
+| 04 | 3 | - | - |
 
 *Updated after each plan completion*
 | Phase 04-ui-tab-sparkline P01 | 20min | 3 tasks | 2 files |

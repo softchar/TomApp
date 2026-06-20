@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: 反弹检测器 + 评分 + 共振（纯函数，零 I/O）** - 单一信号逻辑真源，live 与 backtest 共用；接入任何 I/O 前 100% 单测覆盖
 - [ ] **Phase 3: 实时监控接线（sharded combined-stream WS + 编排器 + Provider）** - 最重基础设施改造：1600 stream 拆连接池、`k.x==true` 硬断言、重连 REST 回填重算、warm-up、mark price、watchlist churn
 - [x] **Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）** - provider 状态已存在，UI 纯消费；可与 Phase 5 并行；drill-down 复用 KlineScreen (completed 2026-06-19)
-- [ ] **Phase 5: 推送提醒（分级 + 冷却 + 归并 + 总量上限）** - 「不可误报刷屏」最后一道防线；可与 Phase 4 并行
+- [x] **Phase 5: 推送提醒（分级 + 冷却 + 归并 + 总量上限）** - 「不可误报刷屏」最后一道防线；可与 Phase 4 并行 (completed 2026-06-20)
 - [ ] **Phase 6: 回测验证（event-driven 引擎 + 偏差防护 + 报告披露）** - 必须排 detector（Phase 2）锁定后，保证回测对 live 有效；lookahead-analysis + 双曲线 + 四项披露
 
 ## Phase Details
@@ -156,7 +156,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 | 1. 指标基础 | 1/1 | Complete | 2026-06-19 |
 | 2. 反弹检测器 + 评分 + 共振 | 2/2 | Complete | 2026-06-19 |
 | 3. 实时监控接线 | 2/2 | Complete | 2026-06-19 |
-| 4. 实时看板 UI | 2/2 | Complete   | 2026-06-19 |
+| 4. 实时看板 UI | 3/3 | Complete    | 2026-06-19 |
 | 5. 推送提醒 | 0/0 | Not started | - |
 | 6. 回测验证 | 0/0 | Not started | - |
 
