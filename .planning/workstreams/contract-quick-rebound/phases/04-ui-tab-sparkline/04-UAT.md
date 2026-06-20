@@ -1,68 +1,53 @@
 ---
-status: partial
+status: testing
 phase: 04-ui-tab-sparkline
-source: [04-VERIFICATION.md]
-started: 2026-06-19T11:00:00Z
-updated: 2026-06-19T20:10:00Z
+source: [04-03-SUMMARY.md, 04-VERIFICATION.md]
+started: 2026-06-20T13:00:00Z
+updated: 2026-06-20T13:00:00Z
+note: 04-03 范围调整后重写（去周期 Tab 单页 + 全市场扫描 + 最近反弹 + 日志面板 + 行内标签 + 字段说明）。原 04-02 的 4-Tab Gap #1（全市场扫描）已由 04-03 修复。
 ---
 
 ## Current Test
-
-[testing paused — fix plan 04-03 已就绪，待执行后复验]
-- Test 1（全市场扫描）：04-03 落地后重新验证核心 gap
-- Test 3（高亮标注）、Test 4（warm-up）：04-03 落地后运行 app 一并验证
+[testing complete — 7/7 passed, 2026-06-20]
 
 ## Tests
 
-### 1. 反弹看板综合 UI 验证
-expected: 4 个周期 Tab 可切换；信号按评分降序排列；每行展示全部字段；sparkline 折线图正确渲染；死猫风险图标颜色正确；warm-up 状态条显示；底部风险提示固定可见
-result: issue
-reported: "不符合，我要的是你能够从全部的合约中找到反弹的合约，让不是我去添加监控。"
-severity: major
-note: 功能覆盖面问题（非 UI 渲染）——详见 Gaps #1
-
-### 2. MACD 图表在 fl_chart 1.2 下渲染验证
-expected: 进入 KlineScreen（任意合约如 BTCUSDT，任意周期），DIF 蓝线、DEA 橙线、MACD 红绿柱状图均正常显示，无变形、无 overflow
+### 1. 全市场扫描覆盖
+expected: 反弹看板从全部 ~400 USDT 永续合约自动扫描发现反弹候选（非固定名单前 50）。日志面板显示「命中 2xx 标的」，信号列表含非 BTC/ETH 的小币。
 result: pass
-note: 沿用 04-01 checkpoint 用户 approved（04-01-SUMMARY：hot reload 肉眼验证 MACD 渲染正常）；与全市场扫描无关，fl_chart 升级零回归独立成立
 
-### 3. KlineScreen 高亮标注验证
-expected: 从反弹看板点击某信号行进入 KlineScreen 后，K 线图上应显示绿色半透明矩形高亮标注反弹窗口区域
-result: [pending]
-
-### 4. Warming-up 行为验证
-expected: 新启动的看板顶部的 warm-up 横幅显示加载中的合约数量，且 warm-up 中的标的不出现信号行
-result: [pending]
-
-### 5. MACD 图表零回归验证
-expected: 图表与升级前（fl_chart 0.65）完全一致，布局/间距/颜色/图例行均无变化
+### 2. 15m 单页看板 + 行内字段标签
+expected: 看板无周期 Tab，单页 15m 信号列表；每行数值下方有小灰字标签（评分/跌幅/回补/死猫/止损）。
 result: pass
-note: 沿用 04-01 checkpoint 用户 approved；macd_chart_widget.dart 零代码改动 + 既有测试全通过
+
+### 3. 最近反弹过滤（recentBars=6）
+expected: 只显示最近 6 根 K 线（1.5h）内结束的反弹。日志「写入 N 信号」反映最近反弹数（非历史窗口全部 263）。
+result: pass
+
+### 4. 调试日志面板
+expected: 看板底部日志面板实时显示扫描/精跟事件（「扫描器已启动」「第 N 轮完成 命中 X 写入 Y」「精跟 +N」），右上角可清空。
+result: pass
+
+### 5. 字段说明对话框
+expected: AppBar 右上角❓按钮 → 弹出字段说明（评分/跌幅×ATR/回补%/死猫风险/止损位的含义与算法）。
+result: pass
+
+### 6. KlineScreen 高亮标注
+expected: 点击信号行进入 KlineScreen，K 线图显示绿色半透明矩形高亮标注反弹窗口区域。
+result: pass
+
+### 7. warm-up 行为
+expected: 新启动看板顶部 warm-up 横幅显示加载中合约数，warm-up 中无信号行；完成后合约进入信号列表。
+result: pass
 
 ## Summary
 
-total: 5
-passed: 2
-issues: 1
-pending: 2
+total: 7
+passed: 7
+issues: 0
+pending: 0
 skipped: 0
-blocked: 0
 
 ## Gaps
 
-- truth: "反弹看板从全部合约中自动扫描发现反弹候选，而非监控固定/手动添加的少量标的"
-  status: failed
-  reason: "User reported: 不符合，我要的是你能够从全部的合约中找到反弹的合约，让不是我去添加监控。"
-  severity: major
-  test: 1
-  root_cause: "ReboundDashboardScreen._startAlertService 仅监控固定名单：ExchangeInfoService 返回的 USDT 永续合约经 sublist(0,50) 硬截断为字典序前 50（未按成交量/流动性排序），ExchangeInfo 不可用时 fallback 到硬编码 _defaultSymbols（20 个 BTC/ETH/…）。未实现全市场扫描覆盖。"
-  artifacts:
-    - path: "lib/screens/rebound_dashboard_screen.dart"
-      issue: "L38-43 _defaultSymbols 硬编码 20 个；L71-90 symbols=allSymbols…sublist(0,50) 字典序截断，未按成交量排序"
-  missing:
-    - "明确扫描范围：全部 USDT 永续（~400+）vs 按成交量 Top N"
-    - "选标按 24h 成交量/流动性排序，而非字典序前 50"
-    - "WS 订阅容量规划（Phase 3 by-symbol sharding）以支撑全市场"
-    - "可选：REST 定时轮询全市场扫描 vs 全量 WS 订阅的成本权衡"
-  debug_session: ""
-  fix_plan: "04-03-PLAN.md (commit 3676a5a) — 全市场轮询+命中精跟，plan-checker iteration 2 PASSED，3 TDD task / 8 文件"
+[none yet]
