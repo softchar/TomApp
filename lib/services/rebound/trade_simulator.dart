@@ -143,13 +143,16 @@ class TradeSimulator {
   /// 若跨越，查找对应的 funding rate 并计算扣费。
   ///
   /// [fundingRateHistory]：{fundingTime(ms): rate}，由 engine 外部维护。
+  /// [barDuration]：单根 bar 的时长（默认 15 分钟）。用于判定 bar 是否跨越
+  ///   结算时刻——原实现硬编码 15 分钟（WR-04），在 1h / 4h 等周期上会出错。
   ///
   /// 返回应扣除的成本（以 entryPrice 比例计，近似 R 单位）。
   double applyFundingFee(
     Position position,
     DateTime barTime,
-    Map<int, double> fundingRateHistory,
-  ) {
+    Map<int, double> fundingRateHistory, {
+    Duration barDuration = const Duration(minutes: 15),
+  }) {
     // UTC 结算时刻（小时）
     const settlementHours = [0, 8, 16];
 
@@ -160,11 +163,9 @@ class TradeSimulator {
           DateTime.utc(barTime.year, barTime.month, barTime.day, hour);
 
       // 检查 bar 是否跨越该结算时刻
-      // bar 从 barTime 开始持续到下一个 bar 时间
-      // 简化：如果 barTime 的小时数 和下一个结算时刻在同一 bar 跨度内
-      // 实际上：bar 的时间代表 openTime，跨 15m。
-      // 若 settlementTime 在 (barTime, barTime + 15min] 范围内，则跨越。
-      final barEnd = barTime.add(const Duration(minutes: 15));
+      // bar 从 barTime 开始持续 barDuration（bar 时间代表 openTime）。
+      // 若 settlementTime 在 (barTime, barTime + barDuration] 范围内，则跨越。
+      final barEnd = barTime.add(barDuration);
       if (settlementTime.isAfter(barTime) &&
           !settlementTime.isAfter(barEnd)) {
         // 查找该结算时刻的 funding rate

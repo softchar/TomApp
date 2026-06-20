@@ -273,6 +273,7 @@ class BacktestEngine {
             position,
             bar.time,
             fundingRateHistory ?? {},
+            barDuration: _barDurationFromInterval(interval),
           );
           cumulativeFundingCost += fundingCost;
         }
@@ -317,6 +318,28 @@ class BacktestEngine {
 
     // ─── 组装报告 ───────────────────────────────────────────
     return _buildReport(config, trades, startedAt);
+  }
+
+  /// 从 Binance interval 字符串解析 bar 时长（WR-04）。
+  ///
+  /// 支持 "15m"/"1h"/"4h"/"1d" 等。无法解析时默认 15 分钟（向后兼容）。
+  Duration _barDurationFromInterval(String interval) {
+    if (interval.isEmpty) return const Duration(minutes: 15);
+    final unit = interval[interval.length - 1];
+    final value = int.tryParse(interval.substring(0, interval.length - 1));
+    if (value == null) return const Duration(minutes: 15);
+    switch (unit) {
+      case 'm':
+        return Duration(minutes: value);
+      case 'h':
+        return Duration(hours: value);
+      case 'd':
+        return Duration(days: value);
+      case 'w':
+        return Duration(days: value * 7);
+      default:
+        return const Duration(minutes: 15);
+    }
   }
 
   /// 计算 R 倍数（以止损风险为 1R 单位）。
