@@ -3,6 +3,7 @@ import 'package:tomapp/models/kline_data.dart';
 import 'package:tomapp/models/rebound_params.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
+import 'package:tomapp/services/rebound/rebound_timeframes.dart';
 
 /// 单轮扫描的进度快照。
 ///
@@ -91,7 +92,8 @@ class ReboundMarketScanner {
 
   // ─── 回调（可选）──────────────────────────────────────────
   final void Function(ScanResult result)? onScanComplete;
-  final void Function(Set<String> hits)? onHits;
+  /// 命中回调（可重新赋值——编排器 attachScanner 时接管，per D4）。
+  void Function(Set<String> hits)? onHits;
   final void Function(ScanProgress progress)? onProgress;
 
   // ─── 状态 ────────────────────────────────────────────────
@@ -125,7 +127,7 @@ class ReboundMarketScanner {
     this.batchDelay = const Duration(milliseconds: 200),
     this.scanInterval = const Duration(seconds: 60),
     this.klineLimit = 99,
-    this.timeframes = const ['15m', '1h', '4h', '1d'],
+    this.timeframes = monitoredTimeframes,
     this.onScanComplete,
     this.onHits,
     this.onProgress,

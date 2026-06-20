@@ -8,6 +8,7 @@ import 'package:tomapp/services/rebound/rebound_confluence_scorer.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
+import 'package:tomapp/services/rebound/rebound_timeframes.dart';
 
 /// 反弹监控编排器。
 ///
@@ -114,7 +115,7 @@ class ReboundAlertService {
   /// （精跟由 scanner 驱动），并启动 scanner timer。
   Future<void> start(
     List<String> symbols, {
-    List<String> timeframes = const ['15m', '1h', '4h', '1d'],
+    List<String> timeframes = monitoredTimeframes,
   }) async {
     final initialSymbols = _scanner != null ? const <String>[] : symbols;
     _subscribedSymbols.addAll(initialSymbols);
@@ -173,7 +174,7 @@ class ReboundAlertService {
 
     // warm-up 完成后从集合中移除（检查该 symbol 所有 TF 是否都结束 warm-up）
     if (_warmingSymbols.contains(c.symbol)) {
-      final stillWarming = ['15m', '1h', '4h', '1d'].any(
+      final stillWarming = monitoredTimeframes.any(
         (tf) => _streamService.isWarmingUp(c.symbol, tf),
       );
       if (!stillWarming) {
@@ -256,7 +257,7 @@ class ReboundAlertService {
       _subscribedSymbols.addAll(newSymbols);
       // warm-up 由 ReboundKlineStreamService 内部处理
       for (final sym in newSymbols) {
-        _streamService.warmUp(sym, ['15m', '1h', '4h', '1d']);
+        _streamService.warmUp(sym, monitoredTimeframes);
       }
     }
 

@@ -112,8 +112,8 @@ void main() {
   });
 
   group('ReboundMarketScanner', () {
-    // Test 1 [限流预算]: 400 标的 × 4 TF = 1600 请求，所有 limit==99
-    test('限流预算：所有请求 limit==99，总数 == 标的 × TF', () async {
+    // Test 1 [限流预算]: 默认 monitoredTimeframes → 400 标的 × 15m = 400 请求
+    test('限流预算（默认 15m）：所有请求 limit==99、interval==15m，总数 == 400', () async {
       final symbols = List.generate(400, (i) => 'SYM${i}USDT');
       fetcher.fixtures = {for (final s in symbols) s: _flatKlinesRaw(99)};
 
@@ -125,16 +125,40 @@ void main() {
         batchSize: 8,
         batchDelay: const Duration(milliseconds: 1),
         klineLimit: 99,
+        // 不传 timeframes → 用默认 monitoredTimeframes（['15m']，per 04-03 决策 D8）
       );
 
       final result = await scanner.scanOnce();
 
-      expect(fetcher.calls.length, 400 * 4,
-          reason: '400 标的 × 4 TF = 1600 请求');
+      expect(fetcher.calls.length, 400,
+          reason: '400 标的 × 15m 单周期 = 400 请求');
       for (final c in fetcher.calls) {
         expect(c.limit, 99, reason: '所有请求 limit 必须 == 99 (weight=1)');
+        expect(c.interval, '15m', reason: '默认 monitoredTimeframes 仅 15m');
       }
       expect(result.hitSymbols, isEmpty, reason: '平盘 fixture 不应命中');
+    });
+
+    // Test 1b [参数化回归]: 构造器传 4 TF → 1600 请求（验证多周期能力保留，per D8）
+    test('参数化回归：构造器传 4 TF → 1600 请求（多周期能力保留）', () async {
+      final symbols = List.generate(400, (i) => 'SYM${i}USDT');
+      fetcher.fixtures = {for (final s in symbols) s: _flatKlinesRaw(99)};
+
+      final scanner = ReboundMarketScanner(
+        fetchKlines: fetcher.call,
+        detector: detector,
+        symbolsProvider: () async => symbols,
+        params: const ReboundParams(),
+        batchSize: 8,
+        batchDelay: const Duration(milliseconds: 1),
+        klineLimit: 99,
+        timeframes: const ['15m', '1h', '4h', '1d'],
+      );
+
+      await scanner.scanOnce();
+
+      expect(fetcher.calls.length, 400 * 4,
+          reason: '构造器注入 4 TF → 400 × 4 = 1600 请求（参数化能力保留）');
     });
 
     // Test 2 [错峰分批]: 批大小不超过上限
@@ -162,11 +186,10 @@ void main() {
       );
 
       await scanner.scanOnce();
-      // 每个 symbol 单轮内发起 4 个请求（4 TF），同一批内 ≤ batchSize 个 symbol
-      // → 并发请求数峰值 ≤ batchSize × 4 = 32（每个 symbol 的 4 个 TF 是 await 串行的）
-      // 但更准确地说：_scanSymbol 内部 4 个 TF 顺序 await，故批内并发 symbol 数 ≤ 8
-      expect(maxActive, lessThanOrEqualTo(8 * 4),
-          reason: '并发 symbol 数 ≤ batchSize=8，每 symbol 串行 4 个 TF');
+      // 默认 monitoredTimeframes=['15m']：每 symbol 单轮 1 个请求（1 TF），
+      // 批内并发 symbol 数 ≤ batchSize=8 → 并发请求数峰值 ≤ 8
+      expect(maxActive, lessThanOrEqualTo(8),
+          reason: '默认 15m 单周期，并发 symbol 数 ≤ batchSize=8');
     });
 
     // Test 3 [命中过滤]: 5 标的，2 命中 + 3 平盘
@@ -227,10 +250,8 @@ void main() {
         'OK2USDT': _flatKlinesRaw(99),
         'HITUSDT': _vReboundRaw(),
       };
-      // BADUSDT 所有 TF 都抛
-      for (final tf in ['15m', '1h', '4h', '1d']) {
-        fetcher.throwOn.add('BADUSDT:$tf');
-      }
+      // BADUSDT 在 15m 抛（默认 monitoredTimeframes 只扫 15m）
+      fetcher.throwOn.add('BADUSDT:15m');
 
       final scanner = ReboundMarketScanner(
         fetchKlines: fetcher.call,
@@ -262,6 +283,7 @@ void main() {
         batchSize: 8,
         batchDelay: const Duration(milliseconds: 1),
         klineLimit: 99,
+        timeframes: const ['15m', '1h', '4h', '1d'], // 显式 4 TF 验证参数化复用（默认仅 15m）
       );
 
       await scanner.scanOnce();
@@ -319,6 +341,7 @@ void main() {
         batchSize: 8,
         batchDelay: const Duration(milliseconds: 1),
         klineLimit: 99,
+        timeframes: const ['15m', '1h', '4h', '1d'], // 显式 4 TF 保持 ×4 断言（默认仅 15m）
       );
 
       // 启动第一次 scanOnce（会被 gate 阻塞）

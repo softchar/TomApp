@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:tomapp/models/rebound_params.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
 import 'package:tomapp/services/rebound/rebound_alert_service.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
+import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
 import 'package:tomapp/services/binance_api_service.dart';
 import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/exchange_info_service.dart';
@@ -13,9 +15,10 @@ import 'kline_screen.dart';
 
 /// 反弹监控看板页面。
 ///
-/// 按周期分 Tab（15m/1h/4h/1d），消费 [ReboundScoreProvider] 的状态，
-/// 信号按评分降序排列。每行展示币种、评分、跌幅、回补%、迷你 sparkline、
-/// 死猫风险标注和止损参考位。点击信号下钻到 [KlineScreen]。
+/// 全市场 REST 轮询扫描（仅 15m 单周期，per 04-03 范围调整）+ 命中精跟，
+/// 消费 [ReboundScoreProvider] 的状态，信号按评分降序排列。
+/// 每行展示币种、评分、跌幅、回补%、迷你 sparkline、死猫风险标注和止损参考位。
+/// 点击信号下钻到 [KlineScreen]。
 class ReboundDashboardScreen extends StatefulWidget {
   const ReboundDashboardScreen({super.key});
 
@@ -24,72 +27,70 @@ class ReboundDashboardScreen extends StatefulWidget {
       _ReboundDashboardScreenState();
 }
 
-class _ReboundDashboardScreenState extends State<ReboundDashboardScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
   ReboundAlertService? _alertService;
+  ReboundMarketScanner? _scanner;
   bool _isInitializing = true;
   String? _initError;
-
-  static const _timeframes = ['15m', '1h', '4h', '1d'];
-  static const _tfLabels = ['15m', '1h', '4h', '1d'];
-
-  /// 默认监控的 Top 20 USDT 永续合约。
-  static const _defaultSymbols = [
-    'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
-    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT',
-    'MATICUSDT', 'UNIUSDT', 'ATOMUSDT', 'LTCUSDT', 'FILUSDT',
-    'APTUSDT', 'ARBUSDT', 'OPUSDT', 'NEARUSDT', 'TIAUSDT',
-  ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _timeframes.length, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _startAlertService());
   }
 
   @override
   void dispose() {
+    _scanner?.stop();
     _alertService?.stop();
-    _tabController.dispose();
     super.dispose();
   }
 
-  /// 按需启动 ReboundAlertService（per Phase 3 设计：由看板启动，避免 app 启动时建立 1600 路 WS）。
+  /// 按需启动全市场扫描 + 精跟编排（per 04-03：scanner REST 轮询全市场，
+  /// 命中标的再由 alertService 动态精跟；看板启动避免 app 启动建全量 WS）。
   Future<void> _startAlertService() async {
     try {
       final provider = context.read<ReboundScoreProvider>();
-      final streamService = ReboundKlineStreamService(BinanceApiService());
+      final api = BinanceApiService();
+      final streamService = ReboundKlineStreamService(api);
       final detector = ReboundDetector(TechnicalIndicators());
+      final exchangeInfo = context.read<ExchangeInfoService>();
+
       _alertService = ReboundAlertService(
         streamService: streamService,
         detector: detector,
         provider: provider,
       );
 
-      // 尝试从 ExchangeInfoService 获取 USDT 永续合约列表
-      List<String> symbols;
-      try {
-        final exchangeInfo = context.read<ExchangeInfoService>();
-        final allSymbols = exchangeInfo.symbols;
-        if (allSymbols.isNotEmpty) {
-          symbols = allSymbols.values
+      // 全市场 REST 轮询扫描器：symbolsProvider 读 ExchangeInfo 全部 USDT 永续可交易合约（无截断）。
+      // timeframes 用默认 monitoredTimeframes（仅 15m，per 04-03 决策 D8）。
+      _scanner = ReboundMarketScanner(
+        fetchKlines: ({required symbol, required interval, required limit}) =>
+            api.getRecentKlines(
+                symbol: symbol, interval: interval, limit: limit),
+        detector: detector,
+        symbolsProvider: () async {
+          final all = exchangeInfo.symbols;
+          return all.values
               .where((s) => s.isUsdtPerpetual && s.isTradable)
               .map((s) => s.symbol)
               .toList();
-          // 限制最多 50 个，避免 WS 连接过多
-          if (symbols.length > 50) {
-            symbols = symbols.sublist(0, 50);
-          }
-        } else {
-          symbols = _defaultSymbols;
-        }
-      } catch (_) {
-        symbols = _defaultSymbols;
-      }
+        },
+        params: const ReboundParams(),
+        // 扫描进度 → Provider 扫描状态字段（供横幅显示）；onProgress 为 final，构造时注入。
+        onProgress: (p) {
+          if (!mounted) return;
+          provider.updateScanState(
+            round: p.round,
+            trackedCount: _alertService!.trackedCount,
+            lastScanTime: p.lastScanTime,
+          );
+        },
+      );
 
-      await _alertService!.start(symbols);
+      _alertService!.attachScanner(_scanner!);
+      await _alertService!.start([]); // 空初始，精跟集合由 scanner 命中驱动
+      _scanner!.start();
       if (mounted) setState(() => _isInitializing = false);
     } catch (e) {
       if (mounted) {
@@ -141,74 +142,74 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen>
                 )
               : Column(
                   children: [
-                    _buildTabBar(),
-                    Expanded(child: _buildTabBarView()),
+                    _buildScanBanner(),
+                    Expanded(child: _buildSignalList()),
                     _buildRiskWarning(),
                   ],
                 ),
     );
   }
 
-  Widget _buildTabBar() {
-    return Container(
-      color: Colors.grey[900],
-      child: TabBar(
-        controller: _tabController,
-        indicatorColor: Colors.blue,
-        labelColor: Colors.white,
-        unselectedLabelColor: Colors.grey,
-        tabs: _tfLabels
-            .map((tf) => Tab(text: tf))
-            .toList(),
-      ),
-    );
-  }
-
-  Widget _buildTabBarView() {
+  /// 扫描状态横幅：扫描轮次 / 精跟数量 / 最后扫描时间。
+  Widget _buildScanBanner() {
     return Consumer<ReboundScoreProvider>(
       builder: (context, provider, _) {
-        final warmingCount = provider.warmingUpSymbols.length;
-
-        return TabBarView(
-          controller: _tabController,
-          children: _timeframes.map((tf) {
-            final signals = provider.getSignalsForTimeframe(tf);
-            return _buildTabContent(tf, signals, warmingCount);
-          }).toList(),
+        final round = provider.scanRound;
+        final tracked = provider.trackedCount;
+        final lastScan = provider.lastScanTime;
+        final timeStr = lastScan == null
+            ? ''
+            : ' · ${lastScan.hour.toString().padLeft(2, '0')}:${lastScan.minute.toString().padLeft(2, '0')}';
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+          color: Colors.grey[850],
+          child: Text(
+            '全市场扫描 · 第 $round 轮 · 精跟 $tracked 个$timeStr',
+            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
         );
       },
     );
   }
 
-  Widget _buildTabContent(
-      String tf, List<ReboundSignal> signals, int warmingCount) {
-    if (signals.isEmpty && warmingCount == 0) {
-      return const Center(
-        child: Text(
-          '暂无监控候选',
-          style: TextStyle(color: Colors.grey, fontSize: 14),
-        ),
-      );
-    }
+  /// 15m 单页信号列表（去周期 Tab，per 04-03 范围调整）。
+  Widget _buildSignalList() {
+    return Consumer<ReboundScoreProvider>(
+      builder: (context, provider, _) {
+        final signals = provider.getSignalsForTimeframe('15m');
+        final warmingCount = provider.warmingUpSymbols.length;
 
-    return Column(
-      children: [
-        if (warmingCount > 0) _buildWarmUpBanner(warmingCount),
-        Expanded(
-          child: signals.isEmpty
-              ? const Center(
-                  child: Text(
-                    '暂无监控候选',
-                    style: TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: signals.length,
-                  itemBuilder: (context, index) =>
-                      _SignalRow(signal: signals[index]),
-                ),
-        ),
-      ],
+        if (signals.isEmpty && warmingCount == 0) {
+          return const Center(
+            child: Text(
+              '暂无监控候选',
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            if (warmingCount > 0) _buildWarmUpBanner(warmingCount),
+            Expanded(
+              child: signals.isEmpty
+                  ? const Center(
+                      child: Text(
+                        '暂无监控候选',
+                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: signals.length,
+                      itemBuilder: (context, index) =>
+                          _SignalRow(signal: signals[index]),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 

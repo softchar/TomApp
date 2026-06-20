@@ -203,11 +203,12 @@ void main() {
               low: 99.0,
               close: 100.0,
               volume: 10.0));
+      mockStream.seededWindows['ABCUSDT'] = flatWindow;
       for (int i = 0; i < 3; i++) {
         svc.handleClosedKline(
             ClosedKline(symbol: 'ABCUSDT', timeframe: '1h', window: flatWindow));
       }
-      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
 
       expect(svc.trackedCount, 0, reason: '连续 3 根未命中应退出精跟');
       expect(mockStream.unsubscribedSymbols, contains('ABCUSDT'));
@@ -335,13 +336,15 @@ class _MockStreamService extends ReboundKlineStreamService {
   final List<String> unsubscribedSymbols = [];
   List<String> connectCalledWith = const [];
 
+  /// 注入的 rolling window（供 handleClosedKline 读取）。
+  Map<String, List<KlineData>> seededWindows = {};
+
   _MockStreamService(super.api);
 
   @override
   Future<void> connect(List<String> symbols, List<String> timeframes) async {
     connectCalledWith = List<String>.from(symbols);
-    // 不实际建 WS（避免测试联网），仅记录
-    _setSubscribedTimeframesForTest(timeframes);
+    setSubscribedTimeframesForTest(timeframes);
   }
 
   @override
@@ -352,5 +355,10 @@ class _MockStreamService extends ReboundKlineStreamService {
   @override
   void unsubscribe(List<String> removeSymbols) {
     unsubscribedSymbols.addAll(removeSymbols);
+  }
+
+  @override
+  List<KlineData>? windowOf(String symbol, String tf) {
+    return seededWindows[symbol];
   }
 }

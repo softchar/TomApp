@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:tomapp/models/kline_data.dart';
 import 'package:tomapp/services/binance_api_service.dart';
+import 'package:tomapp/services/rebound/rebound_timeframes.dart';
 
 /// 收盘 K 线事件（仅 k.x==true 时触发，per D-03）。
 class ClosedKline {
@@ -156,13 +157,13 @@ class ReboundKlineStreamService {
     // 首次建立：走 connect 全量启动
     if (!isConnected && _subscribedSymbols.isEmpty) {
       await connect(fresh, _subscribedTimeframes.isEmpty
-          ? const ['15m', '1h', '4h', '1d']
+          ? monitoredTimeframes
           : _subscribedTimeframes);
       return;
     }
 
     final tfs = _subscribedTimeframes.isEmpty
-        ? const ['15m', '1h', '4h', '1d']
+        ? monitoredTimeframes
         : _subscribedTimeframes;
     for (final sym in fresh) {
       // 找一个容量未满的 connection（或新建一个）
@@ -193,7 +194,7 @@ class ReboundKlineStreamService {
   /// 取其 connection，发 UNSUBSCRIBE JSON，清理索引、buffer、warm-up 状态。
   void unsubscribe(List<String> removeSymbols) {
     final tfs = _subscribedTimeframes.isEmpty
-        ? const ['15m', '1h', '4h', '1d']
+        ? monitoredTimeframes
         : _subscribedTimeframes;
     for (final sym in removeSymbols) {
       for (final tf in tfs) {

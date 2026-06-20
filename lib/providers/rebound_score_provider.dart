@@ -15,6 +15,11 @@ class ReboundScoreProvider extends ChangeNotifier {
   /// warm-up 中的标的集合（由 ReboundAlertService 更新，UI 显示加载状态）
   final Set<String> _warmingUpSymbols = {};
 
+  // ─── 04-03 扫描状态 ──────────────────────────────────────
+  int _scanRound = 0;
+  int _trackedCount = 0;
+  DateTime? _lastScanTime;
+
   /// 不可变视图（UI 读取）
   Map<String, Map<String, ReboundSignal?>> get signalsBySymbol =>
       Map.unmodifiable(_signalsBySymbol);
@@ -43,6 +48,31 @@ class ReboundScoreProvider extends ChangeNotifier {
 
   /// warm-up 中的标的集合（不可变视图）。
   Set<String> get warmingUpSymbols => Set.unmodifiable(_warmingUpSymbols);
+
+  /// 04-03 扫描轮次（每完成一轮自增）。
+  int get scanRound => _scanRound;
+
+  /// 04-03 当前精跟中的标的数量。
+  int get trackedCount => _trackedCount;
+
+  /// 04-03 最近一次完整扫描完成时间。
+  DateTime? get lastScanTime => _lastScanTime;
+
+  /// 更新扫描状态（由 ReboundMarketScanner.onProgress 回调驱动，per B3）。
+  ///
+  /// [lastScanTime] 为 null 时保留旧值（进行中的进度回调无完成时间）。
+  void updateScanState({
+    required int round,
+    required int trackedCount,
+    DateTime? lastScanTime,
+  }) {
+    _scanRound = round;
+    _trackedCount = trackedCount;
+    if (lastScanTime != null) {
+      _lastScanTime = lastScanTime;
+    }
+    notifyListeners();
+  }
 
   /// 更新单个信号 + 通知监听者（Phase 4 UI rebuild）。
   ///
