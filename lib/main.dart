@@ -22,6 +22,7 @@ import 'providers/kline_provider.dart';
 import 'providers/market_overview_provider.dart';
 import 'providers/rebound_score_provider.dart';
 import 'providers/alert_settings_provider.dart';
+import 'providers/backtest_provider.dart';
 import 'services/contract_sync_settings.dart';
 import 'screens/main_navigation.dart';
 import 'utils/app_navigation.dart';
@@ -344,6 +345,10 @@ class MyApp extends StatelessWidget {
             p.load(); // 异步持久化加载，不阻塞 create 返回
             return p;
           },
+        ),
+        // Phase 6：回测验证 Provider
+        ChangeNotifierProvider(
+          create: (_) => BacktestProvider(),
         ),
       ],
       child: Consumer<ThemeProvider>(
