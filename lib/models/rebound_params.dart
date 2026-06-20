@@ -131,6 +131,26 @@ class ReboundParams {
     );
   }
 
+  /// ⚠️ 测试期宽松参数（仅用于 flutter run 快速观察反弹数据，正式使用前禁用）。
+  ///
+  /// 大幅降低下跌/拉回门槛 + 关闭全部共振过滤器，让小波动也能触发反弹，
+  /// 方便前期调试看板 / 扫描链路。通过 `--dart-define=LOOSE_PARAMS=true` 启用
+  /// （dashboard 据此环境变量切换）。正式阈值仍为默认构造值（Phase 6 回测校准）。
+  static const looseForTesting = ReboundParams(
+    dropAtrMultiplier: 1.0, // 原 2.0 — 跌幅 ≥ 1×ATR 即可
+    dropMaxCandles: 5, // 原 3 — 允许更长下跌段
+    dropMinPct15m: 0.3, // 原 2.0 — 15m 跌 0.3% 即触发
+    dropMinPct1h: 0.5,
+    dropMinPct4h: 1.0,
+    dropMinPct1d: 2.0,
+    recoveryMinRatio: 0.15, // 原 0.5 — 回补 15% 即可
+    recoveryMaxCandles: 4, // 原 2
+    confluenceRsiOversoldTurning: false, // 关闭共振过滤，减少过滤更易触发
+    confluenceVolumeConfirm: false,
+    confluenceSupportLevel: false,
+    confluenceCandlePattern: false,
+  );
+
   /// 根据周期标识（"15m"/"1h"/"4h"/"1d"）返回对应的 % 兜底阈值。
   double dropMinPctForTimeframe(String tf) {
     switch (tf) {
