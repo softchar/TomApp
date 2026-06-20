@@ -10,6 +10,10 @@ import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
 import 'package:tomapp/services/rebound/rebound_timeframes.dart';
 
+import 'package:tomapp/services/rebound/alert_throttler.dart';
+import 'package:tomapp/services/rebound/rebound_notification_service.dart';
+import 'package:tomapp/providers/alert_settings_provider.dart';
+
 /// 反弹监控编排器。
 ///
 /// 订阅 [ReboundKlineStreamService.closedKlines]，维护 per-(symbol,TF) 信号状态，
@@ -56,15 +60,27 @@ class ReboundAlertService {
   /// 连续未命中阈值（per D3，达此值退出精跟）。
   static const int missThreshold = 3;
 
+  /// Phase 5：通知节流器（五道闸门管线）。
+  AlertThrottler? _throttler;
+
+  /// Phase 5：通知分发服务（双渠道：high/med）。
+  final ReboundNotificationService _notificationService =
+      ReboundNotificationService();
+
+  /// Phase 5：用户提醒设置 Provider（可选，按需注入）。
+  final AlertSettingsProvider? _alertSettings;
+
   ReboundAlertService({
     required ReboundKlineStreamService streamService,
     required ReboundDetector detector,
     required ReboundScoreProvider provider,
     ReboundParams? params,
+    AlertSettingsProvider? alertSettings,
   })  : _streamService = streamService,
         _detector = detector,
         _provider = provider,
-        _params = params ?? const ReboundParams();
+        _params = params ?? const ReboundParams(),
+        _alertSettings = alertSettings;
 
   /// 当前订阅的 symbol 列表。
   Set<String> get subscribedSymbols => Set.unmodifiable(_subscribedSymbols);
@@ -134,6 +150,15 @@ class ReboundAlertService {
     // 连接 WS（scanner 模式下用空占位，后续由 subscribe 增量订阅）
     await _streamService.connect(initialSymbols, timeframes);
 
+    // Phase 5：构造节流器新实例 + 初始化通知渠道（幂等）
+    _throttler = AlertThrottler();
+    try {
+      await _notificationService.initialize();
+    } catch (_) {
+      // 通知渠道初始化失败（如测试环境无 Flutter binding）不阻塞启动
+      debugPrint('ReboundAlertService: notification init skipped (no Flutter binding?)');
+    }
+
     // 订阅收盘事件（k.x==true，per D-03）
     _closedKlineSub = _streamService.closedKlines.listen(handleClosedKline);
 
@@ -154,6 +179,8 @@ class ReboundAlertService {
     _watchlistTimer?.cancel();
     _watchlistTimer = null;
     _scanner?.stop();
+    _throttler?.reset();
+    _throttler = null;
     _streamService.disconnect();
     _signalsBySymbol.clear();
     _warmingSymbols.clear();
@@ -165,7 +192,7 @@ class ReboundAlertService {
   /// 收盘 K 线回调（核心管线，per D-04）。
   /// 生产路径由 closedKlines stream listener 调用；测试直接调用。
   @visibleForTesting
-  void handleClosedKline(ClosedKline c) {
+  Future<void> handleClosedKline(ClosedKline c) async {
     // 1. warm-up 期间不触发（per D-06）
     if (_streamService.isWarmingUp(c.symbol, c.timeframe)) {
       // 更新 warm-up 状态到 provider
@@ -235,6 +262,25 @@ class ReboundAlertService {
           // fire-and-forget：handleClosedKline 为 sync void，不破坏 stream listener 签名
           untrackSymbol(c.symbol);
         }
+      }
+    }
+
+    // 7. Phase 5 通知管线——五道闸门 + 推送分发（per ALERT-01~06）
+    if (signal != null) {
+      final toggles = _alertSettings?.timeframeToggles ??
+          {for (final tf in monitoredTimeframes) tf: true};
+      final highTh = _alertSettings?.highThreshold ?? 75;
+      final medTh = _alertSettings?.medThreshold ?? 50;
+
+      final decision = _throttler?.evaluate(
+        signal,
+        timeframeToggles: toggles,
+        highThreshold: highTh,
+        medThreshold: medTh,
+      );
+
+      if (decision != null) {
+        await _notificationService.dispatch(decision);
       }
     }
   }

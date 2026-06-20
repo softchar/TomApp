@@ -129,19 +129,19 @@ Plans:
   2. 每币全局冷却（4h 内同币不再推送，冷却期内信号仅看板可见）——**UAT 硬标准：构造同币连续 4 根 K 线满足信号的场景，验证只收到 1 条推送**（Pitfall 11）
   3. 跨周期事件归并：同币多周期共振触发合并为 1 条「多周期共振」高级提醒（非多条）；每日推送总量上限 20 条/天，超额仅留最高分
 
-**Plans**: 3 plans
+**Plans**: 3/3 plans complete
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — AlertLevel 模型 + AlertThrottler 五道闸门管线 + 单测
+- [x] 05-01-PLAN.md — AlertLevel 模型 + AlertThrottler 五道闸门管线 + 单测
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — ReboundNotificationService 多渠道通知 + AlertSettingsProvider 配置
+- [x] 05-02-PLAN.md — ReboundNotificationService 多渠道通知 + AlertSettingsProvider 配置
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-03-PLAN.md — 集成接线：ReboundAlertService + main.dart + ProfileScreen
+- [x] 05-03-PLAN.md — 集成接线：ReboundAlertService + main.dart + ProfileScreen
 
 ### Phase 6: 回测验证（event-driven 引擎 + 偏差防护 + 报告披露）
 
@@ -169,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 | 2. 反弹检测器 + 评分 + 共振 | 2/2 | Complete | 2026-06-19 |
 | 3. 实时监控接线 | 2/2 | Complete | 2026-06-19 |
 | 4. 实时看板 UI | 3/3 | Complete    | 2026-06-19 |
-| 5. 推送提醒 | 0/3 | Planned | - |
+| 5. 推送提醒 | 3/3 | Complete   | 2026-06-20 |
 | 6. 回测验证 | 0/0 | Not started | - |
 
 ---
