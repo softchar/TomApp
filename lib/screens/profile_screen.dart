@@ -9,6 +9,19 @@ import '../services/pump_config_service.dart';
 import '../services/contract_sync_settings.dart';
 import '../services/contract_sync_service.dart';
 import '../providers/kline_provider.dart';
+import '../providers/alert_settings_provider.dart';
+import '../services/rebound/rebound_timeframes.dart';
+
+/// 构建时间戳，由 `flutter run --dart-define=BUILD_TIME=...` 注入。
+/// 用于在「我的」页确认手机上运行的究竟是哪一次构建（每次部署都不同）。
+const String _buildTime = String.fromEnvironment('BUILD_TIME', defaultValue: '');
+
+/// 应用版本号（取自 pubspec.yaml）。
+const String _appVersion = 'v1.0.0';
+
+/// 组合显示的版本字符串：无构建时间戳时只显示版本号。
+String get _displayVersion =>
+    _buildTime.isEmpty ? _appVersion : '$_appVersion · $_buildTime';
 
 /// 构建时间戳，由 `flutter run --dart-define=BUILD_TIME=...` 注入。
 /// 用于在「我的」页确认手机上运行的究竟是哪一次构建（每次部署都不同）。
@@ -329,6 +342,169 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 32),
+          // Phase 5：反弹提醒设置
+          _buildSectionHeader('反弹提醒'),
+          Consumer<AlertSettingsProvider>(
+            builder: (context, provider, child) {
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  children: [
+                    // 周期开关列表
+                    ...monitoredTimeframes.map((tf) {
+                      final isLast = tf == monitoredTimeframes.last;
+                      return Column(
+                        children: [
+                          SwitchListTile(
+                            title: Text('$tf 周期提醒'),
+                            subtitle: Text(
+                              provider.getTimeframeToggle(tf) ? '已开启' : '已关闭',
+                            ),
+                            value: provider.getTimeframeToggle(tf),
+                            onChanged: (v) =>
+                                provider.setTimeframeToggle(tf, v),
+                          ),
+                          if (!isLast) const Divider(height: 1),
+                        ],
+                      );
+                    }),
+                    const Divider(height: 1),
+                    // 高分阈值 Slider
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                '高分提醒阈值',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                '${provider.highThreshold}',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Slider(
+                            value: provider.highThreshold.toDouble(),
+                            min: 0,
+                            max: 100,
+                            divisions: 20,
+                            label: '${provider.highThreshold}',
+                            onChanged: (v) =>
+                                provider.setHighThreshold(v.round()),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('0',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade500)),
+                              Text('100',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade500)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // 中分阈值 Slider
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                '中分提醒阈值',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                '${provider.medThreshold}',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Slider(
+                            value: provider.medThreshold.toDouble(),
+                            min: 0,
+                            max: 100,
+                            divisions: 20,
+                            label: '${provider.medThreshold}',
+                            onChanged: (v) =>
+                                provider.setMedThreshold(v.round()),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('0',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade500)),
+                              Text('100',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade500)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // 说明文字
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '评分高于高分阈值且死猫风险低 → 响铃+震动提醒',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '评分高于中分阈值 → 横幅提醒，低分仅看板可见',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
           const SizedBox(height: 32),
           // 关于部分
