@@ -156,7 +156,12 @@ Plans:
   4. 报告同屏显示胜率 / 平均 R / 盈亏比 / 最大回撤 + 样本数 N；参数扫描强制 walk-forward，只报 out-of-sample，权重业务先验固定不进扫描（Pitfall 2/3/10）
   5. 强制四项披露（前视已检 / 含成本 / 标的池说明 / out-of-sample）+ 免责声明（回测需打 30-50% 折扣，不构成投资建议），缺一项不让展示（Pitfall 13）
 
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+
+- [ ] 06-01-PLAN.md — 数据模型与数据导入管线（BacktestConfig/Report/Trade 模型 + DataImportService + FundingRateService）
+- [ ] 06-02-PLAN.md — 回测引擎 + 模拟交易 + Walk-Forward + 报告生成 + Lookahead 测试
+- [ ] 06-03-PLAN.md — BacktestProvider + BacktestScreen + ProfileScreen 入口 + 集成接线
 
 ## Progress
 
@@ -170,7 +175,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6
 | 3. 实时监控接线 | 2/2 | Complete | 2026-06-19 |
 | 4. 实时看板 UI | 3/3 | Complete    | 2026-06-19 |
 | 5. 推送提醒 | 3/3 | Complete   | 2026-06-20 |
-| 6. 回测验证 | 0/0 | Not started | - |
+| 6. 回测验证 | 0/3 | Planned | - |
 
 ---
 
