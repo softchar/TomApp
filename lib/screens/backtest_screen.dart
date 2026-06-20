@@ -431,7 +431,7 @@ class _BacktestScreenState extends State<BacktestScreen> {
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                '。请检查数据源和网络连接后重试。',
+                '请检查数据源和网络连接后重试。',
                 style: AppTextStyles.bodySmall.copyWith(
                   color: AppColors.textSecondary,
                 ),
