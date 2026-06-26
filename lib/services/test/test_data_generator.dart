@@ -34,6 +34,9 @@ class TestDataGenerator {
   /// 当前步数（只读）。
   int get step => _step;
 
+  /// 构造时传入的 seed（只读）。
+  int? get seed => _seed;
+
   /// 生成下一根 K 线数据。
   KlineData nextCandle(DateTime time) {
     switch (mode) {

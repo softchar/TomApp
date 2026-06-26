@@ -11,7 +11,7 @@ import 'package:tomapp/services/rebound/rebound_detector.dart';
 /// 管理状态：滚动窗口（最近 50 根）、信号历史（最多 20 条）、
 /// 运行状态（运行中/暂停）。
 class TestOrchestrator extends ChangeNotifier {
-  final TestDataGenerator _generator;
+  TestDataGenerator _generator;
   final ReboundDetector _detector;
   ReboundParams _params;
 
@@ -73,8 +73,7 @@ class TestOrchestrator extends ChangeNotifier {
   void changeMode(SimulationMode mode) {
     pause();
     // 创建新的生成器，保留 seed
-    _generator.reset();
-    // 通过 reset 清空状态
+    _generator = TestDataGenerator(mode: mode, seed: _generator.seed);
     _window.clear();
     _signals.clear();
     _tickCount = 0;
