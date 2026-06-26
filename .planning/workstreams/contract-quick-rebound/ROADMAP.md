@@ -41,7 +41,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: 实时看板 UI（周期 Tab + 评分排序 + sparkline）** - provider 状态已存在，UI 纯消费；可与 Phase 5 并行；drill-down 复用 KlineScreen (completed 2026-06-19)
 - [x] **Phase 5: 推送提醒（分级 + 冷却 + 归并 + 总量上限）** - 「不可误报刷屏」最后一道防线；可与 Phase 4 并行 (completed 2026-06-20)
 - [x] **Phase 6: 回测验证（event-driven 引擎 + 偏差防护 + 报告披露）** - 必须排 detector（Phase 2）锁定后，保证回测对 live 有效；lookahead-analysis + 双曲线 + 四项披露 (completed 2026-06-20)
-- [ ] **Phase 7: 反弹测试调试页面（模拟数据 + 实时检测 + K 线可视化）** - 独立测试工具：每 5 秒自动生成模拟分时数据，实时运行 ReboundDetector，上半部分展示 K 线图、下半部分展示高评分通知
+- [x] **Phase 7: 反弹测试调试页面（模拟数据 + 实时检测 + K 线可视化）** - 独立测试工具：每 5 秒自动生成模拟分时数据，实时运行 ReboundDetector，上半部分展示 K 线图、下半部分展示高评分通知 (completed 2026-06-27)
 
 ## Phase Details
 
@@ -187,7 +187,7 @@ Plans:
 **Plans**: 1 plan
 Plans:
 
-- [ ] 07-01-PLAN.md — TestDataGenerator + TestOrchestrator + ReboundTestScreen + ProfileScreen 入口
+- [x] 07-01-PLAN.md — TestDataGenerator + TestOrchestrator + ReboundTestScreen + ProfileScreen 入口
 
 **UI hint**: yes
 
@@ -204,7 +204,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4|5（并行）→ 6 → 7
 | 4. 实时看板 UI | 3/3 | Complete    | 2026-06-19 |
 | 5. 推送提醒 | 3/3 | Complete   | 2026-06-20 |
 | 6. 回测验证 | 3/3 | Complete    | 2026-06-20 |
-| 7. 反弹测试调试页面 | 0/1 | Not Started | — |
+| 7. 反弹测试调试页面 | 1/1 | Complete | 2026-06-27 |
 
 ---
 
