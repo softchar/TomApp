@@ -12,6 +12,7 @@ import '../providers/kline_provider.dart';
 import '../providers/alert_settings_provider.dart';
 import '../services/rebound/rebound_timeframes.dart';
 import '../screens/backtest_screen.dart';
+import '../screens/rebound_test_screen.dart';
 
 /// 构建时间戳，由 `flutter run --dart-define=BUILD_TIME=...` 注入。
 /// 用于在「我的」页确认手机上运行的究竟是哪一次构建（每次部署都不同）。
@@ -512,6 +513,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       context,
                       MaterialPageRoute(
                           builder: (_) => const BacktestScreen()),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                _buildInfoItem(
+                  icon: Icons.bug_report_outlined,
+                  title: '反弹检测测试',
+                  trailingWidget: const Icon(Icons.chevron_right, size: 20),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ReboundTestScreen()),
                     );
                   },
                 ),
