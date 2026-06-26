@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: 多周期合约反弹监控
 current_phase: 07
 status: executing
-stopped_at: Phase 07 Plan 01 完成 — TestDataGenerator + TestOrchestrator + ReboundTestScreen
-last_updated: "2026-06-26T17:48:00.000Z"
+stopped_at: Phase 07 Plan 02 完成 — 修复 changeMode() 模式切换 + seed getter
+last_updated: "2026-06-26T17:48:37.000Z"
 last_activity: 2026-06-27
-last_activity_desc: Phase 07 Plan 01 completed
+last_activity_desc: Phase 07 Plan 02 completed
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 15
-  completed_plans: 15
+  completed_plans: 16
   percent: 100
 current_phase_name: rebound-test-page
 ---
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-06-19)
 ## Current Position
 
 Phase: 07
-Plan: 01 complete
-Status: Phase 07 Plan 01 done
-Last activity: 2026-06-27 — Phase 07 Plan 01 completed
+Plan: 02 complete
+Status: Phase 07 Plan 02 done
+Last activity: 2026-06-27 — Phase 07 Plan 02 completed
 
-Progress: [██████████] 100% plans (7/7 phases, 15 plans complete)
+Progress: [██████████] 100% plans (7/7 phases, 16 plans complete)
 
 ## Performance Metrics
 
@@ -53,11 +53,12 @@ Progress: [██████████] 100% plans (7/7 phases, 15 plans comp
 | Phase 3 (WS+编排器) | 2 | complete | — |
 | 04 | 3 | - | - |
 | 06 | 3 | - | - |
-| 07 | 1 | 15min | 15min |
+| 07 | 2 | 16min | 8min |
 
 *Updated after each plan completion*
 | Phase 04-ui-tab-sparkline P01 | 20min | 3 tasks | 2 files |
 | Phase 04-ui-tab-sparkline P02 | 6min | 3 tasks | 6 files |
+| Phase 07-rebound-test-page P02 | 2min | 1 task | 3 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 下钻高亮时间戳通过 signal 索引 + timeframe duration 反推——不精确但无需额外数据字段
 - [Phase ?]: 看板按需启动 ReboundAlertService，dispose 时停止——避免 app 启动时建立 1600 路 WS
 - [04-03]: **收缩监控周期到仅 15m 单周期**（brainstorming 决策「功能稳定后再扩展」）——新增 `monitoredTimeframes=['15m']` 单一常量源（`rebound_timeframes.dart`），scanner/alert/stream 默认引用；多周期架构（timeframe 字段 / 各周期参数 / 共振评分器 / Provider 多 TF map）全部保留，未来恢复改常量即可。全市场扫描负载 1600→**400 请求/轮（-75%）**。看板移除周期 Tab 改单页。副作用：单周期 mtfConfluence 共振加分恒 0，评分上限降低，不影响 15m 内排序。详见 04-03-PLAN 决策 D8。
+- [07-02]: TestDataGenerator 通过 seed getter 暴露内部 seed，TestOrchestrator._generator 从 final 改为非 final，changeMode() 创建新生成器替换旧的
 
 ### Pending Todos
 
@@ -96,6 +98,6 @@ v2 范围（已登记，不在本路线图）：参数扫描增强（SCAN-01/02/
 ## Session Continuity
 
 Last session: 2026-06-27
-Stopped at: Phase 07 Plan 01 完成 — 全部计划已完成
+Stopped at: Phase 07 Plan 02 完成 — 修复 changeMode() 模式切换 + seed getter
 Resume file: None
-Next: 全部 7 个阶段 15 个计划已完成，项目到达里程碑终点
+Next: 全部 7 个阶段 16 个计划已完成，项目到达里程碑终点
