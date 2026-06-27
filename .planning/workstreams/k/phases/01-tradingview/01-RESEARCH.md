@@ -389,17 +389,17 @@ function updateChart(data) {
 
 **如果此表为空：** 所有声明已验证或引用 — 无需用户确认。
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **TradingView locale 是否自动翻译十字光标标签？**
+1. **TradingView locale 是否自动翻译十字光标标签？** — RESOLVED: 实现后验证
    - What we know: `localization.locale` 接受 BCP 47 语言标签
    - What's unclear: 4.1.3 版本是否自动将 "Open/High/Low/Close" 翻译为 "开/高/低/收"
-   - Recommendation: 实现后测试，如果不翻译，通过 `localization` 的 `formatter` 回调手动处理
+   - Resolution: Plan Task 1 包含 `locale: 'zh-CN'` 配置，实现后通过手动测试验证；如不翻译则通过 `customFields` formatter 手动处理
 
-2. **成交量占比 15% 的视觉效果是否理想？**
+2. **成交量占比 15% 的视觉效果是否理想？** — RESOLVED: 实现后验证
    - What we know: 当前 20%（`scaleMargins.top: 0.8`），D-05 决策改为 15%
    - What's unclear: 15% 是否足够清晰显示成交量变化
-   - Recommendation: 实现后视觉验证，如果太小可调整为 18%
+   - Resolution: Plan Task 1 设置 `scaleMargins.top: 0.85`，实现后视觉验证；如太小可在 Claude's Discretion 范围内调整为 0.82
 
 ## Environment Availability
 
