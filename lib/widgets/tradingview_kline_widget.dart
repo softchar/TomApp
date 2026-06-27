@@ -185,9 +185,7 @@ class _TradingViewKlineWidgetState extends State<TradingViewKlineWidget> {
           secondsVisible: false,
           rightOffset: 5,
           barSpacing: 6,
-          minBarSpacing: 2,
-          fixLeftEdge: true,
-          fixRightEdge: true,
+          minBarSpacing: 6,
           lockVisibleTimeRangeOnResize: false,
           shiftVisibleRangeOnNewBar: true,
         },
@@ -266,14 +264,8 @@ class _TradingViewKlineWidgetState extends State<TradingViewKlineWidget> {
         rightOffset: 5,
       });
 
-      // 计算可见范围：最新数据在右侧，显示50根蜡烛
-      const candleCount = data.candles.length;
-      const visibleCount = Math.min(candleCount, 50);
-
-      chart.timeScale().setVisibleLogicalRange({
-        from: candleCount - visibleCount - 0.5,
-        to: candleCount - 0.5,
-      });
+      // 滚动到最新数据
+      chart.timeScale().scrollToRealTime();
     }
 
     function addHighlightAreas(markerData) {
