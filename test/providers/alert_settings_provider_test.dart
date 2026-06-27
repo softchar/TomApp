@@ -22,9 +22,9 @@ void main() {
   });
 
   group('AlertSettingsProvider', () {
-    test('test_default_values: 默认 highThreshold=75, medThreshold=50', () {
+    test('test_default_values: 默认 highThreshold=75, medThreshold=70', () {
       expect(provider.highThreshold, 75);
-      expect(provider.medThreshold, 50);
+      expect(provider.medThreshold, 70);
     });
 
     test('test_all_tfs_default_true: 所有 monitoredTimeframes 默认开关为 true',

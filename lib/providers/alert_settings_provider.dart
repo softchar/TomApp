@@ -21,7 +21,7 @@ class AlertSettingsProvider extends ChangeNotifier {
 
   // ── 默认值 ────────────────────────────────────────────
   static const int _defaultHighThreshold = 75;
-  static const int _defaultMedThreshold = 50;
+  static const int _defaultMedThreshold = 70;
 
   // ── 内部状态 ──────────────────────────────────────────
   Map<String, bool> _timeframeToggles = {};

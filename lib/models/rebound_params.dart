@@ -33,6 +33,10 @@ class ReboundParams {
   /// RSI 周期（业务先验起步值 14，Phase 6 校准）
   final int rsiPeriod;
 
+  /// 快速 RSI 周期（业务先验起步值 7，Phase 6 校准）
+  /// 用于双周期 RSI 超卖拐头判定，对短期急跌更敏感。
+  final int fastRsiPeriod;
+
   /// ATR 周期（业务先验起步值 14，Phase 6 校准）
   final int atrPeriod;
 
@@ -59,7 +63,7 @@ class ReboundParams {
 
   const ReboundParams({
     this.dropAtrMultiplier = 2.0,
-    this.dropMaxCandles = 3,
+    this.dropMaxCandles = 5,
     this.dropMinPct15m = 2.0,
     this.dropMinPct1h = 3.0,
     this.dropMinPct4h = 5.0,
@@ -69,6 +73,7 @@ class ReboundParams {
     this.volumeMultiplier = 1.5,
     this.rsiOversold = 30.0,
     this.rsiPeriod = 14,
+    this.fastRsiPeriod = 7,
     this.atrPeriod = 14,
     this.swingLookback = 2,
     this.fibLevel382 = 0.382,
@@ -93,6 +98,7 @@ class ReboundParams {
     double? volumeMultiplier,
     double? rsiOversold,
     int? rsiPeriod,
+    int? fastRsiPeriod,
     int? atrPeriod,
     int? swingLookback,
     double? fibLevel382,
@@ -115,6 +121,7 @@ class ReboundParams {
       volumeMultiplier: volumeMultiplier ?? this.volumeMultiplier,
       rsiOversold: rsiOversold ?? this.rsiOversold,
       rsiPeriod: rsiPeriod ?? this.rsiPeriod,
+      fastRsiPeriod: fastRsiPeriod ?? this.fastRsiPeriod,
       atrPeriod: atrPeriod ?? this.atrPeriod,
       swingLookback: swingLookback ?? this.swingLookback,
       fibLevel382: fibLevel382 ?? this.fibLevel382,

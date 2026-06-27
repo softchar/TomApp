@@ -6,7 +6,7 @@ import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/services/test/test_data_generator.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 
-/// 测试编排器：每 5 秒生成一根 K 线，送入 ReboundDetector 检测。
+/// 测试编排器：每 2 秒生成一根 K 线，送入 ReboundDetector 检测。
 ///
 /// 管理状态：滚动窗口（最近 50 根）、信号历史（最多 20 条）、
 /// 运行状态（运行中/暂停）。
@@ -22,9 +22,9 @@ class TestOrchestrator extends ChangeNotifier {
   DateTime? _startTime;
   int _tickCount = 0;
 
-  static const int windowSize = 50;
+  static const int windowSize = 200; // 增加到 200 根，查看更多历史数据
   static const int maxSignals = 20;
-  static const Duration interval = Duration(seconds: 5);
+  static const Duration interval = Duration(seconds: 2);
 
   TestOrchestrator({
     required TestDataGenerator generator,
@@ -43,7 +43,7 @@ class TestOrchestrator extends ChangeNotifier {
   /// 是否正在运行。
   bool get isRunning => _isRunning;
 
-  /// 启动定时器，每 5 秒生成一根 K 线并检测。
+  /// 启动定时器，每 2 秒生成一根 K 线并检测。
   void start() {
     if (_isRunning) return;
     _isRunning = true;
@@ -88,9 +88,9 @@ class TestOrchestrator extends ChangeNotifier {
 
   /// 定时器回调：生成 K 线 → 检测 → 收集信号。
   void _tick(Timer timer) {
-    // 计算模拟时间（每 5 秒一根）
+    // 计算模拟时间（每 2 秒一根）
     final currentTime =
-        _startTime!.add(Duration(seconds: _tickCount * 5));
+        _startTime!.add(Duration(seconds: _tickCount * 2));
     final candle = _generator.nextCandle(currentTime);
 
     // 追加到窗口
@@ -99,9 +99,10 @@ class TestOrchestrator extends ChangeNotifier {
       _window.removeAt(0);
     }
 
-    // 检测
-    if (_window.length >= 20) {
-      // 需要足够 warm-up 数据
+    // 检测（warm-up 需满足检测器最小长度：atrPeriod + dropMaxCandles + recoveryMaxCandles + swingLookback + 2）
+    final minLen = _params.atrPeriod + _params.dropMaxCandles +
+        _params.recoveryMaxCandles + _params.swingLookback + 2;
+    if (_window.length >= minLen) {
       final signal = _detector.evaluate(
         _window,
         _params,

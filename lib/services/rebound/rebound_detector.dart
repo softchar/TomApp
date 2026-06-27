@@ -85,7 +85,36 @@ class ReboundDetector {
     String timeframe,
   ) {
     // 用 Phase 1 的 swingLow 找最近局部低点
-    final lowIdx = _ti.swingLow(window, lookback: params.swingLookback);
+    int? lowIdx = _ti.swingLow(window, lookback: params.swingLookback);
+
+    // fallback：swingLow 在急跌后回升时可能找不到（严格不等式条件要求
+    // low < 左右各 lookback 根，但回升阶段后面的 K 线 low 会逐步抬高）。
+    // 改用更宽的搜索窗口找最低 low，并验证它确实是下跌终点（前面有更高 high）。
+    if (lowIdx == null) {
+      final searchWindow = params.dropMaxCandles + params.recoveryMaxCandles + 1;
+      final start = (window.length - searchWindow).clamp(0, window.length);
+      if (start >= window.length) return null;
+      double minLow = double.infinity;
+      int minIdx = -1;
+      for (int i = start; i < window.length; i++) {
+        if (window[i].low < minLow) {
+          minLow = window[i].low;
+          minIdx = i;
+        }
+      }
+      // 验证最低点前面有更高 high（确认是下跌终点，不是平稳段噪声）
+      if (minIdx > 0) {
+        final searchStart = (minIdx - params.dropMaxCandles).clamp(0, minIdx);
+        double highestBefore = window[searchStart].high;
+        for (int i = searchStart + 1; i < minIdx; i++) {
+          if (window[i].high > highestBefore) highestBefore = window[i].high;
+        }
+        if (highestBefore > window[minIdx].low) {
+          lowIdx = minIdx;
+        }
+      }
+    }
+
     if (lowIdx == null || lowIdx < params.atrPeriod) return null;
 
     // 从 lowIdx 向前找对应 swing high（下跌起始点）
@@ -135,15 +164,15 @@ class ReboundDetector {
   ) {
     final dropRange = window[startIdx].high - window[lowIdx].low;
     if (dropRange <= 0) return null;
-    final midpoint = (window[startIdx].high + window[lowIdx].low) / 2;
 
     // 从 lowIdx 之后扫描回补
+    // 只保留 recoveryRatio >= recoveryMinRatio 条件，
+    // 移除 midpoint 绝对价格条件（过于严格，噪声导致大量漏检）。
     final scanEnd =
         (lowIdx + params.recoveryMaxCandles + 1).clamp(0, window.length);
     for (int i = lowIdx + 1; i < scanEnd; i++) {
       final recoveryRatio = (window[i].close - window[lowIdx].low) / dropRange;
-      if (recoveryRatio >= params.recoveryMinRatio &&
-          window[i].close > midpoint) {
+      if (recoveryRatio >= params.recoveryMinRatio) {
         return (i, recoveryRatio, i - lowIdx);
       }
     }
@@ -175,12 +204,15 @@ class ReboundDetector {
     }
 
     // RSI 超卖拐头（per DETECT-03）
+    // 使用双周期判定：快速 RSI 对急跌更敏感，标准 RSI 捕捉中期趋势。
+    // 任一满足即可触发共振，解决标准 RSI 在短期急跌中反应迟钝的问题。
     if (params.confluenceRsiOversoldTurning) {
-      final rsiResult = _ti.rsiTurningUp(
-          window.sublist(0, recoveryEndIdx + 1),
-          period: params.rsiPeriod,
-          oversold: params.rsiOversold);
-      if (rsiResult.oversoldTurningUp) {
+      final rsiWindow = window.sublist(0, recoveryEndIdx + 1);
+      final fastRsiResult = _ti.rsiTurningUp(rsiWindow,
+          period: params.fastRsiPeriod, oversold: params.rsiOversold);
+      final stdRsiResult = _ti.rsiTurningUp(rsiWindow,
+          period: params.rsiPeriod, oversold: params.rsiOversold);
+      if (fastRsiResult.oversoldTurningUp || stdRsiResult.oversoldTurningUp) {
         filters.add(ConfluenceType.rsiOversoldTurning);
       }
     }
