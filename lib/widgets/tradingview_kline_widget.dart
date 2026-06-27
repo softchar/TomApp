@@ -199,7 +199,7 @@ class _TradingViewKlineWidgetState extends State<TradingViewKlineWidget> {
             const dd = String(d.getDate()).padStart(2, '0');
             const hh = String(d.getHours()).padStart(2, '0');
             const min = String(d.getMinutes()).padStart(2, '0');
-            return `${mm}-${dd} ${hh}:${min}`;
+            return `\${mm}-\${dd} \${hh}:\${min}`;
           },
           priceFormatter: (price) => {
             return price.toLocaleString('zh-CN', {
