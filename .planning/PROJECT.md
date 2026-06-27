@@ -68,7 +68,16 @@ TomApp 是一款 Flutter 加密货币交易辅助应用，聚焦异常行情的�
 | 工作流名用 ASCII slug `contract-quick-rebound` | GSD 名称策略只接受 ASCII；中文 slug 为空会破坏路由 | ✓ Good |
 | 状态管理沿用现有 `provider`（非 Riverpod） | pubspec 实际为 `provider 6.1.0`；CLAUDE.md 记载有误，以 pubspec + codebase map 为准 | ✓ Good |
 
-## Current Milestone: v1.0 多周期合约反弹监控
+## Current Milestone: v1.1 K线图表优化
+
+**Goal:** 采用 TradingView 组件替换现有 ECharts，优化测试页面的K线图表显示
+
+**Target features:**
+- 集成 TradingView K线图表组件
+- 蜡烛线粗细固定（不随缩放动态调整）
+- 从左往右显示蜡烛（符合时间顺序）
+
+### Previous Milestone: v1.0 多周期合约反弹监控
 
 **Goal:** 监控 Binance 合约，实时识别「下跌后快速拉回」的 V 型反弹信号，跨 15m/1h/4h/日 多周期，通过实时看板 + 推送提醒 + 回测验证三种形态交付。
 
