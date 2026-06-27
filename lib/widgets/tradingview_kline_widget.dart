@@ -183,7 +183,6 @@ class _TradingViewKlineWidgetState extends State<TradingViewKlineWidget> {
           borderColor: '#333333',
           timeVisible: true,
           secondsVisible: false,
-          rightOffset: 5,
           barSpacing: 6,
           minBarSpacing: 6,
           lockVisibleTimeRangeOnResize: false,
@@ -261,7 +260,6 @@ class _TradingViewKlineWidgetState extends State<TradingViewKlineWidget> {
       // 设置固定的蜡烛宽度
       chart.timeScale().applyOptions({
         barSpacing: 6,
-        rightOffset: 5,
       });
 
       // 滚动到最新数据
