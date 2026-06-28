@@ -26,7 +26,6 @@ dependencies:
   archive: ^4.0.2
   drift: ^2.19.1+1
   sqlite3_flutter_libs: ^0.5.42
-  webview_flutter: ^4.4.2
 
 dependency_overrides:
   vector_math: ">=2.2.0 <2.4.0"

@@ -204,17 +204,19 @@ class TechnicalIndicators {
   List<double?> atrSeries(List<KlineData> klines, {int period = 14}) {
     final n = klines.length;
     final res = List<double?>.filled(n, null);
-    if (n <= period) return res; // 前 period 个为 null（warm-up，per D-06）
-    // 种子：头 period 根 TR 的简单平均
+    if (n <= period) return res; // 需 period+1 根才有首个 ATR（warm-up，per D-06）
+    // 种子：TR[1..period] 的简单平均（Wilder 标准：TR 从索引 1 开始，
+    // TR[0] 无 prevClose、退化为 high-low，不计入种子）。
+    // 修正：原实现用 TR[0..period-1] 且循环用 TR[i-1]，整体滞后一根（off-by-one）。
     double seed = 0;
-    for (int i = 0; i < period; i++) {
+    for (int i = 1; i <= period; i++) {
       seed += _trueRange(klines, i);
     }
     double a = seed / period;
     res[period] = a;
-    // Wilders 平滑：atr = (prevAtr*(period-1) + tr) / period
+    // Wilders 平滑：atr[i] = (atr[i-1]*(period-1) + tr[i]) / period
     for (int i = period + 1; i < n; i++) {
-      final tr = _trueRange(klines, i - 1);
+      final tr = _trueRange(klines, i);
       a = (a * (period - 1) + tr) / period;
       res[i] = a;
     }

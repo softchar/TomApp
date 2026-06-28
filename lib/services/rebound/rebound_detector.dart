@@ -55,7 +55,7 @@ class ReboundDetector {
     final rsiVal = _ti.rsi(window.sublist(0, recoveryEndIdx + 1),
         period: params.rsiPeriod);
     final deadCatRisk = _calculateDeadCatRisk(
-        volumeRatio, rsiVal, recoveryRatio, confluenceFilters.length);
+        volumeRatio, rsiVal, recoveryRatio, confluenceFilters.length, params);
 
     // ─── 构造输出（timestamp 从 window 最后一根取，不用系统时钟）──
     return ReboundSignal(
@@ -117,8 +117,11 @@ class ReboundDetector {
 
     if (lowIdx == null || lowIdx < params.atrPeriod) return null;
 
-    // 从 lowIdx 向前找对应 swing high（下跌起始点）
-    // 取 lowIdx 之前 dropMaxCandles 范围内的最高 high
+    // 从 lowIdx 向前找下跌起始点：取最近 dropMaxCandles 根内的最高 high。
+    // 「截断式」语义——只看最近 dropMaxCandles 根的跌幅，配合 ATR 跌幅阈值区分
+    // 急跌/阴跌：最近 N 根累计跌幅 ≥ 2×ATR 即为急跌；阴跌（每根跌幅小）最近 N 根
+    // 累计达不到阈值，自然被过滤。这符合「只抓急跌、只看近期」的诉求，且不与
+    // RSI（需 14 根预热）的长下跌场景冲突。
     final searchStart = (lowIdx - params.dropMaxCandles).clamp(0, lowIdx);
     int startIdx = searchStart;
     double highestHigh = window[searchStart].high;
@@ -141,11 +144,11 @@ class ReboundDetector {
     if (atr == null || atr <= 0) return null;
     final dropMagnitude = drop / atr;
 
-    // 验证跌幅 ≥ ATR 倍数阈值
+    // 验证跌幅 ≥ ATR 倍数阈值（急跌 vs 阴跌由它区分）
     if (dropMagnitude < params.dropAtrMultiplier) return null;
 
-    // 验证跌幅发生在 ≤ dropMaxCandles 根 K 线内
-    if (lowIdx - startIdx > params.dropMaxCandles) return null;
+    // 注：dropMaxCandles 为「截断式」——startIdx 搜索范围已限定为最近 dropMaxCandles 根，
+    // 下跌段长度天然 ≤ dropMaxCandles，无需重复校验。
 
     // 验证跌幅 ≥ 对应周期的 % 兜底阈值（per DETECT-01）
     final dropPct = drop / highestHigh * 100;
@@ -308,6 +311,7 @@ class ReboundDetector {
     double? rsiValue,
     double recoveryRatio,
     int confluenceCount,
+    ReboundParams params,
   ) {
     int risk = 0;
 
@@ -317,8 +321,12 @@ class ReboundDetector {
     // RSI 卡在 50 以下（rsi < 50 且未拐头）→ +25
     if (rsiValue != null && rsiValue < 50) risk += 25;
 
-    // 回补不足（recoveryRatio < 0.382 = Fib 38.2%）→ +25
-    if (recoveryRatio < 0.382) risk += 25;
+    // 回补不足 → +25
+    // 修正：原阈值 0.382（Fib 38.2%）被 Stage 2 的 recoveryMinRatio（默认 0.5）
+    // 架空——能进入此处的信号 recoveryRatio ≥ 0.5 > 0.382，该分支永远不触发（死代码）。
+    // 改为 fibLevel618（0.618）：回补未达黄金分割视为偏弱，计入死猫风险。
+    // 这样在可达范围 [recoveryMinRatio, +∞) 内能真正区分弱/强回补。
+    if (recoveryRatio < params.fibLevel618) risk += 25;
 
     // 无共振过滤通过 → +20
     if (confluenceCount == 0) risk += 20;

@@ -94,6 +94,10 @@ class ReboundNotificationService {
       },
     );
 
+    // 请求通知权限（Android 13+ 需运行时请求；iOS 在 show 时触发）。
+    // 已授权则 no-op；首次会弹系统权限对话框。
+    await android.requestNotificationsPermission();
+
     _initialized = true;
   }
 

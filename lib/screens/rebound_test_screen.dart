@@ -5,7 +5,9 @@ import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/test/test_data_generator.dart';
 import 'package:tomapp/services/test/test_orchestrator.dart';
-import 'package:tomapp/widgets/tradingview_kline_widget.dart';
+import 'package:tomapp/widgets/flchart_kline_widget.dart';
+import 'package:tomapp/models/alert_level.dart';
+import 'package:tomapp/services/rebound/rebound_notification_service.dart';
 
 /// 反弹检测测试调试页面。
 ///
@@ -25,6 +27,14 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
   ReboundSignal? _selectedSignal;
   bool _showDebugPanel = false;
 
+  // ── 本地通知（测试页：检测到强反弹信号 → 发手机通知）──
+  final ReboundNotificationService _notifService =
+      ReboundNotificationService();
+  bool _notifReady = false;
+  int? _lastNotifiedSignalTs; // 去重：同一信号（按 timestamp）只通知一次
+  DateTime? _lastNotifiedAt; // 节流：距上次通知 ≥ 8 秒
+  static const int _notifScoreThreshold = 70;
+
   @override
   void initState() {
     super.initState();
@@ -35,9 +45,84 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
       params: _params,
     );
     _orchestrator.addListener(_onUpdate);
+    _initNotifications();
   }
 
-  void _onUpdate() => setState(() {});
+  Future<void> _initNotifications() async {
+    try {
+      await _notifService.initialize();
+      _notifReady = true;
+    } catch (e) {
+      debugPrint('通知初始化失败: $e');
+    }
+  }
+
+  void _onUpdate() {
+    setState(() {});
+    _maybeNotify();
+  }
+
+  /// 检测到强反弹信号 → 发本地通知（带去重 + 节流，避免刷屏）。
+  Future<void> _maybeNotify() async {
+    if (!_notifReady) return;
+    final signals = _orchestrator.signals;
+    if (signals.isEmpty) return;
+    final latest = signals.first;
+    if (latest.score < _notifScoreThreshold) return;
+
+    final ts = latest.timestamp.millisecondsSinceEpoch;
+    if (ts == _lastNotifiedSignalTs) return; // 同一信号已通知
+    final now = DateTime.now();
+    if (_lastNotifiedAt != null &&
+        now.difference(_lastNotifiedAt!) < const Duration(seconds: 8)) {
+      return; // 节流：8 秒内不重复打扰
+    }
+    _lastNotifiedSignalTs = ts;
+    _lastNotifiedAt = now;
+
+    // 分级：高分 + 低死猫风险 → high（响铃+震动）；否则 medium（横幅）
+    final level = (latest.score >= 75 && latest.deadCatRiskScore < 50)
+        ? AlertLevel.high
+        : AlertLevel.medium;
+    await _notifService.dispatch(AlertDecision(
+      symbol: latest.symbol,
+      level: level,
+      signal: latest,
+      coalescedTimeframes: [latest.timeframe],
+      createdAt: now,
+    ));
+  }
+
+  /// 手动触发一条测试通知（验证通知权限/渠道/震动是否生效，不依赖信号）。
+  Future<void> _testNotify() async {
+    if (!_notifReady) {
+      await _initNotifications();
+    }
+    final now = DateTime.now();
+    await _notifService.dispatch(AlertDecision(
+      symbol: 'TESTNOTIFY',
+      level: AlertLevel.high,
+      signal: ReboundSignal(
+        symbol: 'TESTNOTIFY',
+        timeframe: '15m',
+        dropMagnitude: 3.0,
+        recoveryRatio: 0.8,
+        speed: 2,
+        confluenceFilters: const {},
+        score: 85,
+        deadCatRiskScore: 10,
+        entryPrice: 100,
+        swingLowPrice: 90,
+        swingHighPrice: 100,
+        dropStartIndex: 0,
+        dropEndIndex: 2,
+        recoveryEndIndex: 4,
+        timestamp: now,
+      ),
+      coalescedTimeframes: const ['15m'],
+      createdAt: now,
+    ));
+  }
 
   @override
   void dispose() {
@@ -68,9 +153,20 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
       body: Column(
         children: [
           _buildControlBar(),
-          Expanded(flex: 3, child: _buildCandlestickChart()),
-          if (_showDebugPanel) _buildDebugPanel(),
-          Expanded(flex: 2, child: _buildSignalList()),
+          if (_orchestrator.window.isEmpty)
+            const Expanded(
+              child: Center(
+                child: Text(
+                  '点击开始按钮启动测试',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            )
+          else ...[
+            Expanded(flex: 3, child: _buildFlChart()),
+            if (_showDebugPanel) _buildDebugPanel(),
+            Expanded(flex: 1, child: _buildSignalList()),
+          ],
         ],
       ),
     );
@@ -131,6 +227,12 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
                 },
               ),
               const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.notifications_active,
+                    color: Colors.yellow),
+                onPressed: _testNotify,
+                tooltip: '测试通知',
+              ),
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 onPressed: () => _orchestrator.reset(),
@@ -286,133 +388,29 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
     );
   }
 
-  /// 使用 ECharts 展示专业 K 线图（蜡烛图 + 成交量 + 高亮）。
-  Widget _buildCandlestickChart() {
+  /// fl_chart（原生绘制）图表面板。数据用**全量 window**（可拖动看历史），
+  /// 标记索引相对全量 window（activeSignal 产生时的 window，不做 displayWindow offset）。
+  Widget _buildFlChart() {
     final window = _orchestrator.window;
-
-    if (window.isEmpty) {
-      return const Center(
-        child: Text(
-          '点击开始按钮启动测试',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-
-    // 计算最新一根 K 线的涨跌幅
-    String latestChangeText = '--';
-    Color latestChangeColor = Colors.grey;
-    if (window.length > 1) {
-      final latest = window.last;
-      final prevClose = window[window.length - 2].close;
-      final changePercent = ((latest.close - prevClose) / prevClose) * 100;
-      final isUp = changePercent >= 0;
-      latestChangeText = '${isUp ? '+' : ''}${changePercent.toStringAsFixed(2)}%';
-      latestChangeColor = isUp ? Colors.green : Colors.red;
-    }
-
-    // 滑动窗口：只显示最后 50 根 K 线
-    const displayCount = 50;
-    final displayWindow = window.length > displayCount
-        ? window.sublist(window.length - displayCount)
-        : window;
-
-    // 优先使用选中的信号，否则使用最新信号
     final activeSignal = _selectedSignal ??
         (_orchestrator.signals.isNotEmpty ? _orchestrator.signals.first : null);
-
-    // 获取下跌/回拉段索引（相对于 displayWindow）
-    int? dropStart, dropEnd, recoveryEnd;
-    if (activeSignal != null) {
-      final offset = window.length - displayWindow.length;
-      dropStart = activeSignal.dropStartIndex - offset;
-      dropEnd = activeSignal.dropEndIndex - offset;
-      recoveryEnd = activeSignal.recoveryEndIndex - offset;
-      // 确保索引在有效范围内
-      if (dropStart < 0) dropStart = null;
-      if (dropEnd < 0) dropEnd = null;
-      if (recoveryEnd < 0) recoveryEnd = null;
-    }
+    int? dropStart = activeSignal?.dropStartIndex;
+    int? dropEnd = activeSignal?.dropEndIndex;
+    int? recoveryEnd = activeSignal?.recoveryEndIndex;
+    if (dropStart != null && dropStart < 0) dropStart = null;
+    if (dropEnd != null && dropEnd < 0) dropEnd = null;
+    if (recoveryEnd != null && recoveryEnd < 0) recoveryEnd = null;
 
     return Padding(
       padding: const EdgeInsets.all(4),
       child: Stack(
         children: [
-          TradingViewKlineWidget(
-            data: displayWindow,
+          FlChartKlineWidget(
+            data: window,
             dropStartIndex: dropStart,
             dropEndIndex: dropEnd,
             recoveryEndIndex: recoveryEnd,
           ),
-          // 最新涨跌幅标签（右上角）
-          Positioned(
-            top: 4,
-            right: 4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: latestChangeColor, width: 1),
-              ),
-              child: Text(
-                latestChangeText,
-                style: TextStyle(
-                  color: latestChangeColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          // 数据计数标签（左下角）
-          Positioned(
-            bottom: 8,
-            left: 60,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '${window.length} 根 K 线',
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
-          // 选中标记（左上角）
-          if (_selectedSignal != null)
-            Positioned(
-              top: 4,
-              left: 4,
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedSignal = null),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withAlpha(200),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.touch_app, color: Colors.white, size: 14),
-                      const SizedBox(width: 4),
-                      Text(
-                        '已选中 #${_orchestrator.signals.indexOf(_selectedSignal!) + 1}',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.close, color: Colors.white, size: 14),
-                    ],
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -447,14 +445,16 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
         });
       },
       child: Card(
-        color: isSelected ? Colors.blue.withAlpha(50) : Colors.grey[900],
+        // 整体更亮、更显眼：非选中用蓝灰亮底 + 青色描边；选中蓝色高亮。
+        color: isSelected ? Colors.blue.withAlpha(70) : Colors.blueGrey[800],
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        shape: isSelected
-            ? RoundedRectangleBorder(
-                side: const BorderSide(color: Colors.blue, width: 1),
-                borderRadius: BorderRadius.circular(8),
-              )
-            : null,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(
+            color: isSelected ? Colors.cyan : Colors.cyan.withAlpha(90),
+            width: isSelected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           child: Row(

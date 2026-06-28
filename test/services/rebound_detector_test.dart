@@ -250,4 +250,187 @@ void main() {
       expect(ReboundConfluenceScorer.scoreMultiTimeframe(map), 10);
     });
   });
+
+  // ════════════════════════════════════════════════════════════
+  // 深度测试：边界鲁棒性 / 死猫分支 / 评分 / 参数边界 / ATR
+  // ════════════════════════════════════════════════════════════
+
+  group('ReboundDetector - 边界鲁棒性（不崩溃）', () {
+    test('空 window → null，不抛异常', () {
+      expect(eval([]), isNull);
+    });
+    test('单根 window → null', () {
+      expect(eval([_bar(0, 100)]), isNull);
+    });
+    test('正好 minLen 但无下跌 → null', () {
+      // minLen = 14+5+2+2+2 = 25
+      expect(eval(_stableBars(25)), isNull, reason: '平稳行情无下跌');
+    });
+    test('一字板（high=low=close）平稳 → null，不崩', () {
+      final flat = List.generate(
+        30,
+        (i) => KlineData(
+          time: DateTime(2024, 1, 1, 0, i),
+          open: 100,
+          high: 100,
+          low: 100,
+          close: 100,
+          volume: 10,
+        ),
+      );
+      expect(eval(flat), isNull);
+    });
+    test('volume 全 0 的 V 型 → 不崩，且 deadCat 触发低量分支', () {
+      final fixture = [
+        ..._stableBars(20),
+        _bar(20, 97, high: 100, low: 96, volume: 0),
+        _bar(21, 93, high: 97, low: 92, volume: 0),
+        _bar(22, 90, high: 93, low: 89, volume: 0),
+        _bar(23, 99, high: 100, low: 90, volume: 0),
+        _bar(24, 98, high: 99, low: 95, volume: 0),
+      ];
+      final s = eval(fixture);
+      expect(s, isNotNull);
+      // volumeRatio = 0 < 0.8 → 低量 +30
+      expect(s!.deadCatRiskScore, greaterThanOrEqualTo(30));
+    });
+  });
+
+  group('ReboundDetector - 死猫风险分支', () {
+    // 暴露疑点 #1：recoveryRatio<0.382 分支被 Stage2（≥0.5）架空，疑似死代码。
+    // 关闭全部共振让 confluenceCount=0，控制 volumeRatio≥0.8（不触发低量），
+    // 只让 recoveryRatio 不同 → 死猫风险应随回补反向变化。
+    final noConfluence = defaultParams.copyWith(
+      confluenceRsiOversoldTurning: false,
+      confluenceVolumeConfirm: false,
+      confluenceSupportLevel: false,
+      confluenceCandlePattern: false,
+    );
+
+    List<KlineData> fixWithRecovery(double recClose) => [
+          ..._stableBars(20),
+          _bar(20, 97, high: 100, low: 96, volume: 10),
+          _bar(21, 93, high: 97, low: 92, volume: 10),
+          _bar(22, 90, high: 93, low: 89, volume: 10),
+          _bar(23, recClose, high: recClose + 1, low: 90, volume: 15),
+          _bar(24, recClose + 1,
+              high: recClose + 2, low: recClose - 1, volume: 15),
+        ];
+
+    test('回补维度有效：低回补（~55%）死猫风险应高于高回补（~95%）', () {
+      final low = eval(fixWithRecovery(95), params: noConfluence);
+      final high = eval(fixWithRecovery(99.5), params: noConfluence);
+      expect(low, isNotNull);
+      expect(high, isNotNull);
+      expect(
+        low!.deadCatRiskScore,
+        greaterThan(high!.deadCatRiskScore),
+        reason: '回补越低越像死猫；若相等 → recoveryRatio<0.382 是死代码'
+            '（被 Stage2 的 ≥0.5 阈值架空）',
+      );
+    });
+
+    test('低量（volumeRatio<0.8）→ deadCatRisk ≥ 30', () {
+      final s = eval([
+        ..._stableBars(20),
+        _bar(20, 97, high: 100, low: 96, volume: 100),
+        _bar(21, 93, high: 97, low: 92, volume: 100),
+        _bar(22, 90, high: 93, low: 89, volume: 100),
+        // recovery volume 极低 → volumeRatio < 0.8
+        _bar(23, 99, high: 100, low: 90, volume: 10),
+        _bar(24, 98, high: 99, low: 95, volume: 10),
+      ], params: noConfluence);
+      expect(s, isNotNull);
+      expect(s!.deadCatRiskScore, greaterThanOrEqualTo(30));
+    });
+  });
+
+  group('ReboundDetector - 评分合理性', () {
+    test('强反弹 score 显著高于弱反弹', () {
+      final strong = eval(_vReboundFixture())!;
+      final weak = eval([
+        ..._stableBars(20),
+        _bar(20, 97, high: 100, low: 96, volume: 10),
+        _bar(21, 93, high: 97, low: 92, volume: 10),
+        _bar(22, 90, high: 93, low: 89, volume: 10),
+        _bar(23, 95, high: 96, low: 90, volume: 5),
+        _bar(24, 95.5, high: 96, low: 95, volume: 5),
+      ])!;
+      expect(strong.score, greaterThan(weak.score));
+    });
+  });
+
+  group('ReboundDetector - 参数边界', () {
+    test('dropAtrMultiplier=100 → 跌不过 → null', () {
+      final p = defaultParams.copyWith(dropAtrMultiplier: 100);
+      expect(eval(_vReboundFixture(), params: p), isNull);
+    });
+    test('recoveryMinRatio=1.0 → 需100%回补，普通V型（~81%）→ null', () {
+      final p = defaultParams.copyWith(recoveryMinRatio: 1.0);
+      expect(eval(_vReboundFixture(), params: p), isNull);
+    });
+    test('recoveryMaxCandles=1 → 仅看1根回补，speed=1', () {
+      final p = defaultParams.copyWith(recoveryMaxCandles: 1);
+      final s = eval(_vReboundFixture(), params: p);
+      expect(s, isNotNull);
+      expect(s!.speed, equals(1));
+    });
+    test('dropMaxCandles 截断式：小值只缩小起点搜索窗口（急跌由 ATR 阈值区分）', () {
+      // 截断式：startIdx 在 lowIdx 前 dropMaxCandles 根内取最高 high。
+      // dropMaxCandles 小 → 起点更近 → 归一化跌幅更小；阴跌因最近 N 根累计跌幅
+      // 达不到 2×ATR 而被自然过滤，无需额外 length 校验。
+      final p1 = defaultParams.copyWith(dropMaxCandles: 1);
+      final p5 = defaultParams.copyWith(dropMaxCandles: 5);
+      final s1 = eval(_vReboundFixture(), params: p1);
+      final s5 = eval(_vReboundFixture(), params: p5);
+      expect(s1, isNotNull, reason: '最近 1 根跌幅够即触发（急跌）');
+      expect(s5, isNotNull);
+      expect(s1!.dropMagnitude, lessThan(s5!.dropMagnitude),
+          reason: 'dropMaxCandles 小 → 起点更近 → 归一化跌幅更小');
+    });
+  });
+
+  group('TechnicalIndicators - ATR 精度', () {
+    test('ATR 为正且无前视', () {
+      final klines = [
+        _bar(0, 100, high: 102, low: 98),
+        _bar(1, 101, high: 103, low: 99),
+        _bar(2, 100, high: 102, low: 98),
+        ...List.generate(20, (i) => _bar(3 + i, 100, high: 101, low: 99)),
+      ];
+      final atr = ti.atr(klines, period: 14);
+      expect(atr, isNotNull);
+      expect(atr!, greaterThan(0));
+    });
+    test('ATR 长度不足 → null', () {
+      expect(ti.atr([_bar(0, 100)], period: 14), isNull);
+    });
+    test('ATR Wilder 平滑精确值（period=3 手算，验证 off-by-one 修正）', () {
+      // 构造精确 TR 序列（手算每根 TR）
+      final klines = [
+        KlineData(
+            time: DateTime(2024, 1, 1, 0, 0),
+            open: 100, high: 102, low: 98, close: 100, volume: 10), // TR0=4（无 prevClose）
+        KlineData(
+            time: DateTime(2024, 1, 1, 0, 1),
+            open: 100, high: 103, low: 99, close: 101, volume: 10), // TR1=max(4,3,1)=4
+        KlineData(
+            time: DateTime(2024, 1, 1, 0, 2),
+            open: 101, high: 102, low: 98, close: 100, volume: 10), // TR2=max(4,1,3)=4
+        KlineData(
+            time: DateTime(2024, 1, 1, 0, 3),
+            open: 100, high: 101, low: 99, close: 100, volume: 10), // TR3=max(2,1,1)=2
+      ];
+      // 标准 Wilder ATR(3)：seed = avg(TR1,TR2,TR3) = (4+4+2)/3 = 3.333
+      // （原 off-by-one 实现返回 4.0：种子错用 TR0..TR2）
+      final atr = ti.atr(klines, period: 3);
+      expect(atr, closeTo(10 / 3, 0.001));
+    });
+    test('swingLow 在 V 型 fixture 返回最低点索引', () {
+      final f = _vReboundFixture();
+      final sl = ti.swingLow(f, lookback: 2);
+      expect(sl, isNotNull);
+      expect(f[sl!].low, equals(89));
+    });
+  });
 }
