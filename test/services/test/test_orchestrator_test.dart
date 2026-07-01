@@ -1,4 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tomapp/models/kline_data.dart';
+import 'package:tomapp/models/rebound_params.dart';
+import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/services/test/test_data_generator.dart';
 import 'package:tomapp/services/test/test_orchestrator.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
@@ -241,4 +244,97 @@ void main() {
       expect(data1, equals(data2), reason: '相同 seed + 相同模式应产生完全一致的数据');
     });
   });
+
+  // ── 向生产监控页对齐：信号收集口径 ──────────────────────────────
+  // 决策1：移除 score>=60 门槛（命中由 detector 三阶段门槛决定）
+  // 决策2：recentBars 过滤（只保留最近 N 根内结束的反弹，与 ReboundMarketScanner 一致）
+  group('TestOrchestrator 信号收集口径（向监控页对齐）', () {
+    // 极小阈值让 warm-up minLen 最小（3+1+1+1+2=8）以尽快进入检测；
+    // 取 8 > recentBars(6)，避开 window.length==recentBars 的 threshold=0 边界
+    // （生产 scanner 窗口远大于 recentBars，不会触发该边界）。
+    const tinyParams = ReboundParams(
+      atrPeriod: 3,
+      dropMaxCandles: 1,
+      recoveryMaxCandles: 1,
+      swingLookback: 1,
+    );
+
+    test('弱信号（score<60）也入库 —— 移除 score>=60 门槛（决策1）', () {
+      final orch = TestOrchestrator(
+        generator: TestDataGenerator(mode: SimulationMode.vRebound, seed: 1),
+        detector: _FakeDetector(_signal(score: 50, recoveryEndIndex: 100)),
+        params: tinyParams,
+      );
+      orch.start();
+      orch.pause(); // 停真实 Timer，手动驱动 tick
+      for (var i = 0; i < 10; i++) orch.tick(); // window.length=10
+      expect(orch.signals, isNotEmpty,
+          reason: 'score=50 应入库：命中由 detector 三阶段门槛决定，不再卡 score>=60');
+      orch.dispose();
+    });
+
+    test('窗口内历史反弹（recoveryEndIndex 在最近6根外）被过滤（决策2）', () {
+      final orch = TestOrchestrator(
+        generator: TestDataGenerator(mode: SimulationMode.vRebound, seed: 1),
+        detector: _FakeDetector(_signal(score: 80, recoveryEndIndex: 0)),
+        params: tinyParams,
+      );
+      orch.start();
+      orch.pause();
+      for (var i = 0; i < 10; i++) orch.tick();
+      expect(orch.signals, isEmpty,
+          reason: 'recoveryEndIndex=0 在最近6根外，应被 recentBars 过滤（与 scanner 一致）');
+      orch.dispose();
+    });
+
+    test('最近发生的强反弹仍入库（防回归）', () {
+      final orch = TestOrchestrator(
+        generator: TestDataGenerator(mode: SimulationMode.vRebound, seed: 1),
+        detector: _FakeDetector(_signal(score: 80, recoveryEndIndex: 1000)),
+        params: tinyParams,
+      );
+      orch.start();
+      orch.pause();
+      for (var i = 0; i < 10; i++) orch.tick();
+      expect(orch.signals, isNotEmpty,
+          reason: 'recoveryEndIndex 在最近6根内 + 高分，应正常入库');
+      orch.dispose();
+    });
+  });
+}
+
+/// 构造可控的测试信号（仅 score / recoveryEndIndex 可变，其余固定）。
+ReboundSignal _signal({required int score, required int recoveryEndIndex}) {
+  return ReboundSignal(
+    symbol: 'TESTUSDT',
+    timeframe: '15m',
+    dropMagnitude: 2.5,
+    recoveryRatio: 0.6,
+    speed: 1,
+    confluenceFilters: const <ConfluenceType>{},
+    score: score,
+    deadCatRiskScore: 10,
+    entryPrice: 100,
+    swingLowPrice: 90,
+    swingHighPrice: 100,
+    dropStartIndex: 0,
+    dropEndIndex: 1,
+    recoveryEndIndex: recoveryEndIndex,
+    timestamp: DateTime(2024, 1, 1),
+  );
+}
+
+/// 假检测器：忽略真实窗口，恒返回预设信号，便于精确控制 score / recoveryEndIndex。
+class _FakeDetector extends ReboundDetector {
+  final ReboundSignal signal;
+  _FakeDetector(this.signal) : super(TechnicalIndicators());
+
+  @override
+  ReboundSignal? evaluate(
+    List<KlineData> window,
+    ReboundParams params, {
+    required String symbol,
+    required String timeframe,
+  }) =>
+      signal;
 }

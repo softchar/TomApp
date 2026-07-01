@@ -2,11 +2,15 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tomapp/models/kline_data.dart';
 import 'package:tomapp/models/rebound_params.dart';
+import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
 import 'package:tomapp/services/technical_indicators.dart';
+import 'package:tomapp/models/alert_level.dart';
 import 'package:tomapp/services/rebound/rebound_alert_service.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
+import 'package:tomapp/services/rebound/rebound_notification_repository.dart';
+import 'package:tomapp/services/rebound/rebound_notification_service.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
 import 'package:tomapp/services/binance_api_service.dart';
@@ -51,6 +55,7 @@ void main() {
       streamService: streamService,
       detector: detector,
       provider: provider,
+      notificationRepository: _SpyNotificationRepository(),
     );
   });
 
@@ -155,6 +160,7 @@ void main() {
         streamService: mockStream,
         detector: detector,
         provider: provider,
+        notificationRepository: _SpyNotificationRepository(),
       );
     });
 
@@ -309,6 +315,59 @@ void main() {
       expect(svc.trackedCount, 30);
     });
   });
+
+  group('ReboundAlertService 通知（最新一根 + high 才推送并记录历史）', () {
+    late _MockStreamService mockStream;
+    late _SpyNotificationService notifSpy;
+    late _SpyNotificationRepository repoSpy;
+    late ReboundAlertService svc;
+
+    setUp(() async {
+      mockStream = _MockStreamService(BinanceApiService());
+      notifSpy = _SpyNotificationService();
+      repoSpy = _SpyNotificationRepository();
+      svc = ReboundAlertService(
+        streamService: mockStream,
+        detector: detector,
+        provider: provider,
+        notificationService: notifSpy,
+        notificationRepository: repoSpy,
+      );
+      await svc.start([]); // 初始化 _throttler + 通知服务
+    });
+
+    tearDown(() async {
+      await svc.stop();
+    });
+
+    test('最新一根 + high 级信号触发推送并记录历史', () async {
+      await svc.notifyOnSignal(_highSignal('BTCUSDT'));
+      expect(notifSpy.dispatched, hasLength(1));
+      expect(notifSpy.dispatched.first.level, AlertLevel.high);
+      expect(repoSpy.inserted, hasLength(1), reason: '应持久化到历史');
+      expect(provider.notificationHistory, hasLength(1), reason: '内存历史同步');
+      expect(provider.notificationHistory.first.symbol, 'BTCUSDT');
+    });
+
+    test('非最新一根（isLatestBar=false）不推送、不记录', () async {
+      await svc.notifyOnSignal(_highSignal('BTCUSDT', isLatestBar: false));
+      expect(notifSpy.dispatched, isEmpty, reason: '非最新一根不推送');
+      expect(repoSpy.inserted, isEmpty);
+    });
+
+    test('medium 级信号不推送（只推 high）', () async {
+      await svc.notifyOnSignal(_medSignal('ETHUSDT'));
+      expect(notifSpy.dispatched, isEmpty,
+          reason: 'medium 仅看板可见，不推送');
+    });
+
+    test('同 symbol 4h 内第二次被冷却拦截（scanner/WS 共享 throttler）', () async {
+      await svc.notifyOnSignal(_highSignal('BTCUSDT'));
+      await svc.notifyOnSignal(_highSignal('BTCUSDT'));
+      expect(notifSpy.dispatched, hasLength(1),
+          reason: 'per-symbol 4h 冷却，同 symbol 不重复通知');
+    });
+  });
 }
 
 /// 构造一个非空 ReboundSignal 用于 provider 预填。
@@ -361,4 +420,67 @@ class _MockStreamService extends ReboundKlineStreamService {
   List<KlineData>? windowOf(String symbol, String tf) {
     return seededWindows[symbol];
   }
+}
+
+/// high 级测试信号（score≥75 且 deadCat<50）。[isLatestBar] 默认 true（最新一根）。
+ReboundSignal _highSignal(String sym, {bool isLatestBar = true}) => ReboundSignal(
+      symbol: sym,
+      timeframe: '15m',
+      dropMagnitude: 3.0,
+      recoveryRatio: 0.8,
+      speed: 1,
+      confluenceFilters: const {},
+      score: 85,
+      deadCatRiskScore: 10,
+      entryPrice: 100,
+      swingLowPrice: 90,
+      swingHighPrice: 100,
+      dropStartIndex: 20,
+      dropEndIndex: 22,
+      recoveryEndIndex: 24,
+      isLatestBar: isLatestBar,
+      timestamp: DateTime(2024),
+    );
+
+/// medium 级测试信号（50 ≤ score < 75）。
+ReboundSignal _medSignal(String sym) => ReboundSignal(
+      symbol: sym,
+      timeframe: '15m',
+      dropMagnitude: 2.5,
+      recoveryRatio: 0.6,
+      speed: 2,
+      confluenceFilters: const {},
+      score: 60,
+      deadCatRiskScore: 10,
+      entryPrice: 100,
+      swingLowPrice: 90,
+      swingHighPrice: 100,
+      dropStartIndex: 20,
+      dropEndIndex: 22,
+      recoveryEndIndex: 24,
+      isLatestBar: true,
+      timestamp: DateTime(2024),
+    );
+
+/// 通知服务 spy：记录 dispatch 调用，不真正发通知。
+class _SpyNotificationService extends ReboundNotificationService {
+  final List<AlertDecision> dispatched = [];
+
+  @override
+  Future<void> dispatch(AlertDecision decision) async {
+    dispatched.add(decision);
+  }
+}
+
+/// 通知历史仓库 spy：记录 insert 调用，不碰 sqflite。
+class _SpyNotificationRepository implements ReboundNotificationRepository {
+  final List<ReboundSignal> inserted = [];
+
+  @override
+  Future<void> insert(ReboundSignal signal, {DateTime? notifiedAt}) async {
+    inserted.add(signal);
+  }
+
+  @override
+  Future<List<ReboundNotificationRecord>> queryRecent(int limit) async => [];
 }

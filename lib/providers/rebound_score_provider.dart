@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 
 /// 反弹信号评分 Provider（ChangeNotifier）。
@@ -29,11 +30,13 @@ class ReboundScoreProvider extends ChangeNotifier {
       _signalsBySymbol[symbol]?[tf];
 
   /// 按周期过滤信号，按 score 降序返回。
-  List<ReboundSignal> getSignalsForTimeframe(String tf) {
+  ///
+  /// [minScore]：仅返回评分 ≥ 此值的信号（默认 0 不过滤，向后兼容）。
+  List<ReboundSignal> getSignalsForTimeframe(String tf, {int minScore = 0}) {
     final result = <ReboundSignal>[];
     for (final tfMap in _signalsBySymbol.values) {
       final signal = tfMap[tf];
-      if (signal != null) result.add(signal);
+      if (signal != null && signal.score >= minScore) result.add(signal);
     }
     result.sort((a, b) => b.score.compareTo(a.score));
     return result;
@@ -148,6 +151,35 @@ class ReboundScoreProvider extends ChangeNotifier {
     _warmingUpSymbols
       ..clear()
       ..addAll(symbols);
+    notifyListeners();
+  }
+
+  // ─── 通知历史（监控页历史区域展示）──────────────────────
+  final List<ReboundNotificationRecord> _notificationHistory = [];
+
+  /// 历史最多保留条数。
+  static const int maxNotificationHistory = 50;
+
+  /// 通知历史（最新在前，只读视图）。
+  List<ReboundNotificationRecord> get notificationHistory =>
+      List.unmodifiable(_notificationHistory);
+
+  /// 追加一条通知到历史头部（alertService 推送后调），超上限裁剪旧条目。
+  void addNotificationHistory(ReboundNotificationRecord record) {
+    _notificationHistory.insert(0, record);
+    if (_notificationHistory.length > maxNotificationHistory) {
+      _notificationHistory.removeLast();
+    }
+    notifyListeners();
+  }
+
+  /// 从持久化加载历史（监控页启动调）。[loader] 通常传 `repo.queryRecent`。
+  Future<void> loadNotificationHistory(
+      Future<List<ReboundNotificationRecord>> Function(int limit) loader) async {
+    final loaded = await loader(maxNotificationHistory);
+    _notificationHistory
+      ..clear()
+      ..addAll(loaded);
     notifyListeners();
   }
 }

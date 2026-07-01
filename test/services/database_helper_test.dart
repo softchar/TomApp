@@ -4,13 +4,14 @@ import 'package:tomapp/services/database_helper.dart';
 void main() {
   group('DatabaseHelper', () {
     test('instance returns singleton', () {
-      final helper1 = DatabaseHelper.instance;
-      final helper2 = DatabaseHelper.instance;
-      expect(identical(helper1, helper2), true);
+      expect(identical(DatabaseHelper.instance, DatabaseHelper.instance), true);
     });
 
-    test('databaseVersion is defined', () {
-      expect(DatabaseHelper.currentVersion, 3);
+    // v5：新增 rebound_notifications 表（反弹通知历史）。
+    // 注：实际 migration 建表依赖 sqflite 原生，桌面 ffi 环境在本机不可用，
+    // 故只断言 version 常量；建表正确性靠代码审查 + 真机首次启动验证。
+    test('databaseVersion is v5（含反弹通知历史表）', () {
+      expect(DatabaseHelper.currentVersion, 5);
     });
   });
 }

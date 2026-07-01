@@ -9,6 +9,7 @@ import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
 import 'package:tomapp/services/rebound/rebound_confluence_scorer.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
+import 'package:tomapp/services/rebound/rebound_notification_repository.dart';
 import 'package:tomapp/services/binance_api_service.dart';
 import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/exchange_info_service.dart';
@@ -19,6 +20,10 @@ import 'kline_screen.dart';
 /// 为前期快速观察反弹数据：切换到 [ReboundParams.looseForTesting]（大幅降低
 /// 检测门槛 + 关闭共振过滤）。正式使用不传此 define 即恢复严格默认阈值。
 const _looseForTesting = bool.fromEnvironment('LOOSE_PARAMS');
+
+/// 看板列表显示门槛：仅展示评分 ≥ 此值的信号（低于的不在看板列表显示，
+/// 但仍会被检测/精跟/按 high 门槛通知——此过滤仅影响列表展示）。
+const _minDisplayScore = 70;
 
 /// 反弹监控看板页面。
 ///
@@ -37,7 +42,9 @@ class ReboundDashboardScreen extends StatefulWidget {
 class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
   ReboundAlertService? _alertService;
   ReboundMarketScanner? _scanner;
+  ReboundNotificationRepository? _notificationRepository;
   bool _isInitializing = true;
+  bool _showHistory = false;
   String? _initError;
 
   @override
@@ -63,10 +70,12 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
       final detector = ReboundDetector(TechnicalIndicators());
       final exchangeInfo = context.read<ExchangeInfoService>();
 
+      _notificationRepository = ReboundNotificationRepository();
       _alertService = ReboundAlertService(
         streamService: streamService,
         detector: detector,
         provider: provider,
+        notificationRepository: _notificationRepository,
       );
 
       // 全市场 REST 轮询扫描器：symbolsProvider 读 ExchangeInfo 全部 USDT 永续可交易合约（无截断）。
@@ -115,6 +124,9 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                         score: (signal.score + mtfScore).clamp(0, 100))
                     : signal;
                 provider.upsert(symEntry.key, tfEntry.key, enriched);
+                // 扫描命中立即通知（只推 high；与 WS 收盘共享 alertService 的
+                // throttler，同 symbol 4h 冷却内不重复通知）。
+                _alertService!.notifyOnSignal(enriched);
                 count++;
               }
             }
@@ -126,6 +138,9 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
 
       _alertService!.attachScanner(_scanner!);
       await _alertService!.start([]); // 空初始，精跟集合由 scanner 命中驱动
+      // 加载历史通知（持久化 → 内存 → 历史区域）
+      await provider.loadNotificationHistory(
+          _notificationRepository!.queryRecent);
       provider.addLog('扫描器已启动 · 全市场 15m 轮询中（首轮约 40-50s）');
       _scanner!.start();
       if (mounted) setState(() => _isInitializing = false);
@@ -188,6 +203,7 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                   children: [
                     _buildScanBanner(),
                     Expanded(child: _buildSignalList()),
+                    _buildHistoryPanel(),
                     _buildLogPanel(),
                     _buildRiskWarning(),
                   ],
@@ -223,7 +239,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
   Widget _buildSignalList() {
     return Consumer<ReboundScoreProvider>(
       builder: (context, provider, _) {
-        final signals = provider.getSignalsForTimeframe('15m');
+        final signals =
+            provider.getSignalsForTimeframe('15m', minScore: _minDisplayScore);
         final warmingCount = provider.warmingUpSymbols.length;
 
         if (signals.isEmpty && warmingCount == 0) {
@@ -320,6 +337,111 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                         },
                       ),
               ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 通知历史面板（可折叠）：展示已推送的通知记录（时间、币种、评分、跌幅）。
+  Widget _buildHistoryPanel() {
+    return Consumer<ReboundScoreProvider>(
+      builder: (context, provider, _) {
+        final history = provider.notificationHistory;
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            border:
+                Border(top: BorderSide(color: Colors.grey[800]!, width: 0.5)),
+          ),
+          child: Column(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _showHistory = !_showHistory),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.history, size: 14, color: Colors.grey),
+                      const SizedBox(width: 6),
+                      Text('通知历史（${history.length}）',
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12)),
+                      const Spacer(),
+                      Icon(
+                          _showHistory
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          color: Colors.grey,
+                          size: 18),
+                    ],
+                  ),
+                ),
+              ),
+              if (_showHistory)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  child: history.isEmpty
+                      ? const Center(
+                          child: Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text('暂无通知历史',
+                              style: TextStyle(
+                                  color: Colors.grey, fontSize: 11)),
+                        ))
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.only(bottom: 6),
+                          itemCount: history.length,
+                          itemBuilder: (context, i) {
+                            final r = history[i];
+                            final hh = r.notifiedAt.hour
+                                .toString()
+                                .padLeft(2, '0');
+                            final mm = r.notifiedAt.minute
+                                .toString()
+                                .padLeft(2, '0');
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 2),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                      width: 40,
+                                      child: Text('$hh:$mm',
+                                          style: const TextStyle(
+                                              color: Colors.grey,
+                                              fontSize: 10,
+                                              fontFamily: 'monospace'))),
+                                  SizedBox(
+                                      width: 60,
+                                      child: Text(
+                                          r.symbol.replaceAll('USDT', ''),
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              fontWeight:
+                                                  FontWeight.bold))),
+                                  SizedBox(
+                                      width: 28,
+                                      child: Text('${r.score}',
+                                          style: TextStyle(
+                                              color: Colors.green[300],
+                                              fontSize: 11))),
+                                  Text(
+                                      '${r.dropMagnitude.toStringAsFixed(1)}×ATR',
+                                      style: TextStyle(
+                                          color: Colors.red[300],
+                                          fontSize: 10)),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
             ],
           ),
         );

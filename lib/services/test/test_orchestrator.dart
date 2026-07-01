@@ -25,6 +25,8 @@ class TestOrchestrator extends ChangeNotifier {
   static const int windowSize = 200; // 增加到 200 根，查看更多历史数据
   static const int maxSignals = 20;
   static const Duration interval = Duration(seconds: 2);
+  /// 只保留反弹结束位置在最近 N 根内的信号（与 ReboundMarketScanner.recentBars 一致）。
+  static const int recentBars = 6;
 
   TestOrchestrator({
     required TestDataGenerator generator,
@@ -48,7 +50,7 @@ class TestOrchestrator extends ChangeNotifier {
     if (_isRunning) return;
     _isRunning = true;
     _startTime = DateTime.now();
-    _timer = Timer.periodic(interval, _tick);
+    _timer = Timer.periodic(interval, (_) => tick());
     notifyListeners();
   }
 
@@ -87,7 +89,11 @@ class TestOrchestrator extends ChangeNotifier {
   }
 
   /// 定时器回调：生成 K 线 → 检测 → 收集信号。
-  void _tick(Timer timer) {
+  ///
+  /// 抽离为可测方法：单测可同步驱动 [tick] 而无需等待真实 2s Timer
+  /// （与 ReboundAlertService.handleClosedKline 的 @visibleForTesting 同思路）。
+  @visibleForTesting
+  void tick() {
     // 计算模拟时间（每 2 秒一根）
     final currentTime =
         _startTime!.add(Duration(seconds: _tickCount * 2));
@@ -110,10 +116,18 @@ class TestOrchestrator extends ChangeNotifier {
         timeframe: '15m',
       );
 
-      if (signal != null && signal.score >= 60) {
-        _signals.insert(0, signal);
-        if (_signals.length > maxSignals) {
-          _signals.removeLast();
+      // 命中判定完全由 detector 三阶段门槛决定（移除 score>=60，向监控页对齐）。
+      // recentBars 过滤：只保留最近 N 根内结束的反弹（与 ReboundMarketScanner 一致），
+      // 短窗口（< recentBars）降级为不接受，避免放行历史反弹（per 04-REVIEW WR-02）。
+      if (signal != null) {
+        final threshold = _window.length >= recentBars
+            ? _window.length - recentBars
+            : _window.length;
+        if (signal.recoveryEndIndex >= threshold) {
+          _signals.insert(0, signal);
+          if (_signals.length > maxSignals) {
+            _signals.removeLast();
+          }
         }
       }
     }

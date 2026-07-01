@@ -288,10 +288,16 @@ class ReboundMarketScanner {
         final threshold = window.length >= recentBars
             ? window.length - recentBars
             : window.length;
-        final effective =
+        var effective =
             (signal == null || signal.recoveryEndIndex >= threshold)
                 ? signal
                 : null;
+        // 标记反弹是否在最新一根确认（recoveryEndIndex == window 末根），
+        // 用于收紧通知门槛（仅最新一根才推送，避免通知数根前的旧反弹）。
+        if (effective != null &&
+            effective.recoveryEndIndex == window.length - 1) {
+          effective = effective.copyWith(isLatestBar: true);
+        }
         signalsBySymbolTf.putIfAbsent(symbol, () => {});
         signalsBySymbolTf[symbol]![tf] = effective;
         if (effective != null) {

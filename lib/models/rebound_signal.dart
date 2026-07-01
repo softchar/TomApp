@@ -60,6 +60,10 @@ class ReboundSignal {
   /// 拉回段结束索引
   final int recoveryEndIndex;
 
+  /// 反弹是否在最新一根 K 线确认（recoveryEndIndex == window.length-1）。
+  /// 由 scanner/handleClosedKline 设置；用于收紧通知门槛（仅最新一根才推送）。
+  final bool isLatestBar;
+
   /// 确认 K 线时间（从 window 最后一根 K 线的 time 取，非 DateTime.now）
   final DateTime timestamp;
 
@@ -78,6 +82,7 @@ class ReboundSignal {
     required this.dropStartIndex,
     required this.dropEndIndex,
     required this.recoveryEndIndex,
+    this.isLatestBar = false,
     required this.timestamp,
   });
 
@@ -97,6 +102,7 @@ class ReboundSignal {
     int? dropStartIndex,
     int? dropEndIndex,
     int? recoveryEndIndex,
+    bool? isLatestBar,
     DateTime? timestamp,
   }) {
     return ReboundSignal(
@@ -114,6 +120,7 @@ class ReboundSignal {
       dropStartIndex: dropStartIndex ?? this.dropStartIndex,
       dropEndIndex: dropEndIndex ?? this.dropEndIndex,
       recoveryEndIndex: recoveryEndIndex ?? this.recoveryEndIndex,
+      isLatestBar: isLatestBar ?? this.isLatestBar,
       timestamp: timestamp ?? this.timestamp,
     );
   }

@@ -2,12 +2,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:tomapp/models/kline_data.dart';
 import 'package:tomapp/models/rebound_params.dart';
+import 'package:tomapp/models/alert_level.dart';
+import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
 import 'package:tomapp/services/rebound/rebound_confluence_scorer.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
+import 'package:tomapp/services/rebound/rebound_notification_repository.dart';
 import 'package:tomapp/services/rebound/rebound_timeframes.dart';
 
 import 'package:tomapp/services/rebound/alert_throttler.dart';
@@ -63,9 +66,11 @@ class ReboundAlertService {
   /// Phase 5：通知节流器（五道闸门管线）。
   AlertThrottler? _throttler;
 
-  /// Phase 5：通知分发服务（双渠道：high/med）。
-  final ReboundNotificationService _notificationService =
-      ReboundNotificationService();
+  /// Phase 5：通知分发服务（双渠道：high/med）。可注入便于测试。
+  final ReboundNotificationService _notificationService;
+
+  /// 通知历史仓库（sqflite）。可注入便于测试。
+  final ReboundNotificationRepository _notificationRepository;
 
   /// Phase 5：用户提醒设置 Provider（可选，按需注入）。
   final AlertSettingsProvider? _alertSettings;
@@ -76,11 +81,16 @@ class ReboundAlertService {
     required ReboundScoreProvider provider,
     ReboundParams? params,
     AlertSettingsProvider? alertSettings,
+    ReboundNotificationService? notificationService,
+    ReboundNotificationRepository? notificationRepository,
   })  : _streamService = streamService,
         _detector = detector,
         _provider = provider,
         _params = params ?? const ReboundParams(),
-        _alertSettings = alertSettings;
+        _alertSettings = alertSettings,
+        _notificationService = notificationService ?? ReboundNotificationService(),
+        _notificationRepository =
+            notificationRepository ?? ReboundNotificationRepository();
 
   /// 当前订阅的 symbol 列表。
   Set<String> get subscribedSymbols => Set.unmodifiable(_subscribedSymbols);
@@ -219,12 +229,17 @@ class ReboundAlertService {
     if (window == null || window.isEmpty) return;
 
     // 3. 调用纯函数检测器（Phase 2，per D-01）
-    final signal = _detector.evaluate(
+    final rawSignal = _detector.evaluate(
       List<KlineData>.from(window),
       _params,
       symbol: c.symbol,
       timeframe: c.timeframe,
     );
+    // 标记反弹是否在最新一根确认（recoveryEndIndex == window 末根），用于收紧通知门槛。
+    final signal = rawSignal == null
+        ? null
+        : rawSignal.copyWith(
+            isLatestBar: rawSignal.recoveryEndIndex == window.length - 1);
 
     // 4. 更新 per-(symbol,TF) 信号快照
     _signalsBySymbol.putIfAbsent(c.symbol, () => {});
@@ -241,8 +256,9 @@ class ReboundAlertService {
         : window.map((k) => k.close).toList();
 
     // 6. 将 mtfScore 加到 signal.score（clamp 0-100）并更新 provider
+    ReboundSignal? enriched;
     if (signal != null) {
-      final enriched = signal.copyWith(
+      enriched = signal.copyWith(
         score: (signal.score + mtfScore).clamp(0, 100),
       );
       _provider.upsert(c.symbol, c.timeframe, enriched,
@@ -265,23 +281,56 @@ class ReboundAlertService {
       }
     }
 
-    // 7. Phase 5 通知管线——五道闸门 + 推送分发（per ALERT-01~06）
-    if (signal != null) {
-      final toggles = _alertSettings?.timeframeToggles ??
-          {for (final tf in monitoredTimeframes) tf: true};
-      final highTh = _alertSettings?.highThreshold ?? 75;
-      final medTh = _alertSettings?.medThreshold ?? 50;
+    // 7. 通知管线——用 enriched（含 mtf 加分 + isLatestBar），仅最新一根 + high 才推送并记录历史。
+    if (enriched != null) {
+      await _dispatchIfHigh(enriched);
+    }
+  }
 
-      final decision = _throttler?.evaluate(
-        signal,
-        timeframeToggles: toggles,
-        highThreshold: highTh,
-        medThreshold: medTh,
-      );
+  /// 扫描命中立即通知入口（供 dashboard onScanComplete 调用）。
+  ///
+  /// 与 [handleClosedKline] 共享同一通知判定 [_dispatchIfHigh] → 共享
+  /// [_throttler] 节流状态：同一 symbol 扫描命中通知后，4h 内 WS 收盘再判定
+  /// 会被冷却拦截，避免扫描与收盘双重通知。
+  Future<void> notifyOnSignal(ReboundSignal signal) async {
+    await _dispatchIfHigh(signal);
+  }
 
-      if (decision != null) {
-        await _notificationService.dispatch(decision);
-      }
+  /// 通知判定：经 [AlertThrottler] 五道闸门后，仅 high 级推送给 [_notificationService]。
+  ///
+  /// scanner（[notifyOnSignal]）与 WS 收盘（[handleClosedKline]）共享本方法 →
+  /// 共享 [_throttler] 节流状态，同 symbol 4h 冷却内不重复通知。
+  /// 仅当 [ReboundSignal.isLatestBar]（最新一根确认）且 high 级才推送，
+  /// 避免通知数根前的旧反弹 + 中低分打扰；推送后写入通知历史。
+  Future<void> _dispatchIfHigh(ReboundSignal signal) async {
+    // 只通知最新一根确认的反弹（需求：最新蜡烛是反弹才通知）。
+    if (!signal.isLatestBar) return;
+    final toggles = _alertSettings?.timeframeToggles ??
+        {for (final tf in monitoredTimeframes) tf: true};
+    final highTh = _alertSettings?.highThreshold ?? 75;
+    final medTh = _alertSettings?.medThreshold ?? 50;
+
+    final decision = _throttler?.evaluate(
+      signal,
+      timeframeToggles: toggles,
+      highThreshold: highTh,
+      medThreshold: medTh,
+    );
+
+    if (decision != null && decision.level == AlertLevel.high) {
+      await _notificationService.dispatch(decision);
+      // 持久化 + 同步内存历史（用同一时间戳保持一致）
+      final now = DateTime.now();
+      await _notificationRepository.insert(signal, notifiedAt: now);
+      _provider.addNotificationHistory(ReboundNotificationRecord(
+        symbol: signal.symbol,
+        timeframe: signal.timeframe,
+        score: signal.score,
+        deadCatRiskScore: signal.deadCatRiskScore,
+        dropMagnitude: signal.dropMagnitude,
+        recoveryRatio: signal.recoveryRatio,
+        notifiedAt: now,
+      ));
     }
   }
 

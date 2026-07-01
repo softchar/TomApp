@@ -12,7 +12,7 @@ import 'package:tomapp/services/rebound/rebound_notification_service.dart';
 /// 反弹检测测试调试页面。
 ///
 /// 上半部分 CandlestickChart 展示最近 50 根 K 线（下跌段红色、拉回段绿色），
-/// 下半部分展示 score >= 60 的信号列表，
+/// 下半部分展示检测命中的信号列表（命中由 detector 三阶段门槛决定，与监控页对齐），
 /// 顶部控制栏支持开始/暂停、模式切换、参数调整。
 class ReboundTestScreen extends StatefulWidget {
   const ReboundTestScreen({super.key});
@@ -416,7 +416,7 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
     );
   }
 
-  /// 信号列表：展示 score >= 60 的信号。
+  /// 信号列表：展示检测命中的信号（命中门槛与合约反弹监控页一致）。
   Widget _buildSignalList() {
     final signals = _orchestrator.signals;
 

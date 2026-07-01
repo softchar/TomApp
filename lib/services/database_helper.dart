@@ -18,8 +18,8 @@ class DatabaseHelper {
   String? _dbPath;
 
   static const String _databaseName = 'tomapp.db';
-  // v4：新增 drift 管理的 klines / backtest_runs / backtest_trades 三表。
-  static const int _databaseVersion = 4;
+  // v4：drift 管理的 klines/backtest_runs/backtest_trades；v5：rebound_notifications（通知历史）。
+  static const int _databaseVersion = 5;
   static int get currentVersion => _databaseVersion;
 
   Database? _database;
@@ -98,6 +98,9 @@ class DatabaseHelper {
 
     // Phase 1 新增：drift 管理的三表（onCreate 全新安装路径，per BLOCKER 2 / D-07）。
     await _createDriftTables(db);
+
+    // v5：反弹通知历史表（onCreate 全新安装路径）。
+    await _createReboundNotificationsTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -139,6 +142,11 @@ class DatabaseHelper {
     if (oldVersion < 4) {
       // Phase 1：drift 管理的三表（onUpgrade 升级路径，per BLOCKER 2）。
       await _createDriftTables(db);
+    }
+
+    if (oldVersion < 5) {
+      // v5：反弹通知历史表（onUpgrade 升级路径）。
+      await _createReboundNotificationsTable(db);
     }
   }
 
@@ -189,6 +197,26 @@ class DatabaseHelper {
         rMultiple REAL NOT NULL,
         FOREIGN KEY (runId) REFERENCES backtest_runs(id) ON DELETE CASCADE
       )
+    ''');
+  }
+
+  /// v5：创建反弹通知历史表（onCreate 与 onUpgrade 双路径，与 drift 三表一致）。
+  Future<void> _createReboundNotificationsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS rebound_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        deadCatRiskScore INTEGER NOT NULL,
+        dropMagnitude REAL NOT NULL,
+        recoveryRatio REAL NOT NULL,
+        notifiedAt INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_rebound_notified_at
+      ON rebound_notifications(notifiedAt DESC)
     ''');
   }
 

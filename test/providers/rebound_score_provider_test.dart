@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
 
@@ -74,6 +75,17 @@ void main() {
       expect(result[0].score, 90);
       expect(result[1].score, 75);
       expect(result[2].score, 60);
+    });
+
+    test('getSignalsForTimeframe minScore 过滤：仅返回 ≥ minScore（降序）', () {
+      provider.upsert('A', '1h', _signal('A', '1h', score: 60));
+      provider.upsert('B', '1h', _signal('B', '1h', score: 90));
+      provider.upsert('C', '1h', _signal('C', '1h', score: 70));
+      provider.upsert('D', '1h', _signal('D', '1h', score: 69));
+      final result = provider.getSignalsForTimeframe('1h', minScore: 70);
+      expect(result.length, 2, reason: '60 和 69 应被过滤');
+      expect(result[0].score, 90);
+      expect(result[1].score, 70);
     });
 
     test('removeSymbol 清除指定 symbol 所有信号', () {
@@ -174,4 +186,34 @@ void main() {
       p.dispose();
     });
   });
+
+  group('通知历史', () {
+    test('addNotificationHistory 插入头部并裁剪到上限', () {
+      for (var i = 0; i < 55; i++) {
+        provider.addNotificationHistory(_notifRecord('SYM$i'));
+      }
+      expect(provider.notificationHistory.length, 50);
+      expect(provider.notificationHistory.first.symbol, 'SYM54',
+          reason: '最新在前');
+    });
+
+    test('loadNotificationHistory 从 loader 加载并清空旧值', () async {
+      provider.addNotificationHistory(_notifRecord('OLD'));
+      await provider.loadNotificationHistory(
+          (limit) async => [_notifRecord('BTC'), _notifRecord('ETH')]);
+      expect(provider.notificationHistory.length, 2);
+      expect(provider.notificationHistory.first.symbol, 'BTC');
+    });
+  });
 }
+
+ReboundNotificationRecord _notifRecord(String sym, {int score = 80}) =>
+    ReboundNotificationRecord(
+      symbol: sym,
+      timeframe: '15m',
+      score: score,
+      deadCatRiskScore: 10,
+      dropMagnitude: 3.0,
+      recoveryRatio: 0.7,
+      notifiedAt: DateTime(2024),
+    );
