@@ -1,12 +1,22 @@
 import 'package:flutter/foundation.dart';
 import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
+import 'package:tomapp/services/rebound/rebound_signal_repository.dart';
 
 /// 反弹信号评分 Provider（ChangeNotifier）。
 ///
 /// 由 [ReboundAlertService] 更新，UI（Phase 4 ReboundDashboardScreen）消费。
 /// 暴露 per-(symbol, timeframe) 的只读信号状态，按评分降序。
 class ReboundScoreProvider extends ChangeNotifier {
+  /// 列表信号仓库（可选；注入后低频路径写库 + 启动恢复）。
+  ReboundSignalRepositoryInterface? _signalRepo;
+
+  /// 进列表门槛：score≥此值视为"在列表"，触发 [onSignalListed]。
+  static const int listedThreshold = 70;
+
+  /// 信号首次进列表(score≥70)回调（alertService 注入以触发通知）。
+  void Function(ReboundSignal)? onSignalListed;
+
   /// symbol → timeframe → signal（只读暴露）
   final Map<String, Map<String, ReboundSignal?>> _signalsBySymbol = {};
 
@@ -61,6 +71,14 @@ class ReboundScoreProvider extends ChangeNotifier {
   /// 04-03 最近一次完整扫描完成时间。
   DateTime? get lastScanTime => _lastScanTime;
 
+  ReboundScoreProvider({ReboundSignalRepositoryInterface? signalRepository})
+      : _signalRepo = signalRepository;
+
+  /// 后注入仓库（dashboard 在 _startAlertService 里拿到 provider 后调用）。
+  void setSignalRepository(ReboundSignalRepositoryInterface repo) {
+    _signalRepo = repo;
+  }
+
   /// 更新扫描状态（由 ReboundMarketScanner.onProgress 回调驱动，per B3）。
   ///
   /// [lastScanTime] 为 null 时保留旧值（进行中的进度回调无完成时间）。
@@ -102,13 +120,36 @@ class ReboundScoreProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 更新单个信号 + 通知监听者（Phase 4 UI rebuild）。
+  /// 更新单个信号 + 通知监听者。
   ///
-  /// [recentCloses] 为可选最近收盘价列表，用于 sparkline 渲染。不传则保持现有数据。
+  /// [recentCloses]：可选 sparkline 数据。
+  /// [persist]：true 时写库（仅收盘/扫描命中低频路径传 true；5 秒重评估传 false）。
   void upsert(String symbol, String tf, ReboundSignal? signal,
-      {List<double>? recentCloses}) {
+      {List<double>? recentCloses, bool persist = false}) {
+    final old = _signalsBySymbol[symbol]?[tf];
     _signalsBySymbol.putIfAbsent(symbol, () => {});
     _signalsBySymbol[symbol]![tf] = signal;
+
+    // 进列表跃迁：旧值不在列表（null 或 <listedThreshold）且新值进列表 → 触发回调
+    if (signal != null &&
+        signal.score >= listedThreshold &&
+        (old == null || old.score < listedThreshold)) {
+      onSignalListed?.call(signal);
+    }
+
+    // 持久化（低频路径 persist=true 才写；fire-and-forget 不阻塞 UI）
+    if (_signalRepo != null) {
+      if (signal != null) {
+        if (persist) {
+          // ignore: unawaited_futures
+          _signalRepo!.upsert(signal).catchError((Object _) {});
+        }
+      } else {
+        // ignore: unawaited_futures
+        _signalRepo!.delete(symbol, tf).catchError((Object _) {});
+      }
+    }
+
     if (recentCloses != null) {
       _recentClosesBySymbol.putIfAbsent(symbol, () => {});
       _recentClosesBySymbol[symbol]![tf] = recentCloses;
@@ -180,6 +221,17 @@ class ReboundScoreProvider extends ChangeNotifier {
     _notificationHistory
       ..clear()
       ..addAll(loaded);
+    notifyListeners();
+  }
+
+  /// 从持久化恢复列表信号（启动调）。[loader] 通常传 `repo.queryListed`。
+  Future<void> loadSignals(
+      Future<List<ReboundSignal>> Function(int minScore, int limit) loader) async {
+    final loaded = await loader(listedThreshold, 100);
+    for (final s in loaded) {
+      _signalsBySymbol.putIfAbsent(s.symbol, () => {});
+      _signalsBySymbol[s.symbol]![s.timeframe] = s;
+    }
     notifyListeners();
   }
 }

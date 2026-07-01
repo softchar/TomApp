@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
+import 'package:tomapp/services/rebound/rebound_signal_repository.dart';
 
 /// Phase 3 / D-05/D-11：ReboundScoreProvider ChangeNotifier 测试。
 
@@ -205,6 +206,85 @@ void main() {
       expect(provider.notificationHistory.first.symbol, 'BTC');
     });
   });
+
+  group('列表信号持久化', () {
+    test('upsert(persist:true) 写库', () {
+      final repo = _FakeSignalRepo();
+      final p = ReboundScoreProvider(signalRepository: repo);
+      p.upsert('BTCUSDT', '15m', _signal('BTCUSDT', '15m', score: 85),
+          persist: true);
+      expect(repo.inserted, hasLength(1));
+      p.dispose();
+    });
+
+    test('upsert(persist:false) 不写库', () {
+      final repo = _FakeSignalRepo();
+      final p = ReboundScoreProvider(signalRepository: repo);
+      p.upsert('BTCUSDT', '15m', _signal('BTCUSDT', '15m'), persist: false);
+      expect(repo.inserted, isEmpty);
+      p.dispose();
+    });
+
+    test('upsert null 信号触发 delete', () async {
+      final repo = _FakeSignalRepo();
+      final p = ReboundScoreProvider(signalRepository: repo);
+      p.upsert('BTCUSDT', '15m', _signal('BTCUSDT', '15m'), persist: true);
+      p.upsert('BTCUSDT', '15m', null);
+      await Future<void>.delayed(Duration.zero);
+      expect(repo.deleted, hasLength(1));
+      p.dispose();
+    });
+
+    test('loadSignals 从 loader 恢复信号', () async {
+      final p = ReboundScoreProvider();
+      await p.loadSignals((_, __) async => [
+            _signal('BTC', '15m', score: 80),
+            _signal('ETH', '15m', score: 75),
+          ]);
+      expect(p.getSignal('BTC', '15m'), isNotNull);
+      expect(p.getSignal('ETH', '15m'), isNotNull);
+      p.dispose();
+    });
+  });
+
+  group('onSignalListed 跃迁回调', () {
+    ReboundSignal s(int score) => _signal('X', '15m', score: score);
+
+    test('null → ≥70 触发', () {
+      final listed = <ReboundSignal>[];
+      final p = ReboundScoreProvider()..onSignalListed = listed.add;
+      p.upsert('X', '15m', s(72));
+      expect(listed, hasLength(1));
+      expect(listed.first.score, 72);
+      p.dispose();
+    });
+
+    test('<70 → ≥70 触发（仅跨越那次）', () {
+      final listed = <ReboundSignal>[];
+      final p = ReboundScoreProvider()..onSignalListed = listed.add;
+      p.upsert('X', '15m', s(60));
+      p.upsert('X', '15m', s(75));
+      expect(listed, hasLength(1));
+      p.dispose();
+    });
+
+    test('≥70 → ≥70 不触发（已在列表）', () {
+      final listed = <ReboundSignal>[];
+      final p = ReboundScoreProvider()..onSignalListed = listed.add;
+      p.upsert('X', '15m', s(72));
+      p.upsert('X', '15m', s(80));
+      expect(listed, hasLength(1));
+      p.dispose();
+    });
+
+    test('<70 不触发', () {
+      final listed = <ReboundSignal>[];
+      final p = ReboundScoreProvider()..onSignalListed = listed.add;
+      p.upsert('X', '15m', s(60));
+      expect(listed, isEmpty);
+      p.dispose();
+    });
+  });
 }
 
 ReboundNotificationRecord _notifRecord(String sym, {int score = 80}) =>
@@ -217,3 +297,15 @@ ReboundNotificationRecord _notifRecord(String sym, {int score = 80}) =>
       recoveryRatio: 0.7,
       notifiedAt: DateTime(2024),
     );
+
+class _FakeSignalRepo implements ReboundSignalRepositoryInterface {
+  final List<ReboundSignal> inserted = [];
+  final List<String> deleted = [];
+  @override
+  Future<void> upsert(ReboundSignal s) async => inserted.add(s);
+  @override
+  Future<void> delete(String symbol, String timeframe) async =>
+      deleted.add('$symbol:$timeframe');
+  @override
+  Future<List<ReboundSignal>> queryListed(int minScore, int limit) async => [];
+}

@@ -2,12 +2,19 @@ import 'package:sqflite/sqflite.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/services/database_helper.dart';
 
+/// 仓库抽象接口（便于测试注入 fake，解耦 provider 与 sqflite）。
+abstract class ReboundSignalRepositoryInterface {
+  Future<void> upsert(ReboundSignal signal);
+  Future<void> delete(String symbol, String timeframe);
+  Future<List<ReboundSignal>> queryListed(int minScore, int limit);
+}
+
 /// 看板列表信号仓库（sqflite `rebound_signals` 表，v6）。
 ///
 /// 由 [ReboundScoreProvider] 在低频路径（收盘/扫描命中）写库、启动时读回。
 /// 与 ReboundNotificationRepository（仅已通知的高分记录）的区别：
 /// 本仓库存"进列表(score≥70)"的全部信号，范围更大。
-class ReboundSignalRepository {
+class ReboundSignalRepository implements ReboundSignalRepositoryInterface {
   static const String _table = 'rebound_signals';
 
   final DatabaseHelper _helper;
@@ -17,6 +24,7 @@ class ReboundSignalRepository {
       : _helper = helper ?? DatabaseHelper.instance;
 
   /// 插入或覆盖一条信号（PK: symbol+timeframe）。
+  @override
   Future<void> upsert(ReboundSignal signal) async {
     final db = await _helper.database;
     await db.insert(
@@ -43,6 +51,7 @@ class ReboundSignalRepository {
   }
 
   /// 删除指定 (symbol, timeframe)。
+  @override
   Future<void> delete(String symbol, String timeframe) async {
     final db = await _helper.database;
     await db.delete(
@@ -53,6 +62,7 @@ class ReboundSignalRepository {
   }
 
   /// 按 score 降序返回 ≥ [minScore] 的信号（最多 [limit] 条）。
+  @override
   Future<List<ReboundSignal>> queryListed(int minScore, int limit) async {
     final db = await _helper.database;
     final rows = await db.query(
