@@ -641,12 +641,16 @@ class _SignalRow extends StatelessWidget {
     final highlightStartMs =
         signal.timestamp.millisecondsSinceEpoch - totalKlines * tfMs;
     final highlightEndMs = signal.timestamp.millisecondsSinceEpoch;
+    // 下跌段结束（swing low）时间戳 → 作为红下跌/绿回补两段标注的分界。
+    final highlightDropEndMs = highlightStartMs +
+        (signal.dropEndIndex - signal.dropStartIndex + 1) * tfMs;
 
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => KlineScreen(
         symbol: signal.symbol,
         defaultInterval: signal.timeframe,
         highlightStartMs: highlightStartMs,
+        highlightDropEndMs: highlightDropEndMs,
         highlightEndMs: highlightEndMs,
       ),
     ));

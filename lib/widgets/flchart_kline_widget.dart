@@ -288,6 +288,8 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
     final count = endIdx - startIdx + 1;
 
     // ② 反弹段半透明背景标记：把全量索引转成相对可见窗口的 X。
+    // - 三索引齐全（dropStart/dropEnd/recoveryEnd）：下跌段红 + 回补段绿。
+    // - 仅 dropStart + recoveryEnd（dropEnd 缺失，如 backtest 持仓区间）：整段标绿。
     final ranges = <VerticalRangeAnnotation>[];
     void addRange(int? absA, int? absB, Color color) {
       if (absA == null || absB == null) return;
@@ -301,10 +303,15 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
         color: color,
       ));
     }
-    addRange(widget.dropStartIndex, widget.dropEndIndex,
-        _upColor.withValues(alpha: 0.50));
-    addRange(widget.dropEndIndex, widget.recoveryEndIndex,
-        _downColor.withValues(alpha: 0.50));
+    if (widget.dropEndIndex != null) {
+      addRange(widget.dropStartIndex, widget.dropEndIndex,
+          _upColor.withValues(alpha: 0.50));
+      addRange(widget.dropEndIndex, widget.recoveryEndIndex,
+          _downColor.withValues(alpha: 0.50));
+    } else {
+      addRange(widget.dropStartIndex, widget.recoveryEndIndex,
+          _downColor.withValues(alpha: 0.50));
+    }
 
     return CandlestickChart(
       CandlestickChartData(

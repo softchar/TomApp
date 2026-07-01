@@ -4,7 +4,7 @@ import 'package:tomapp/providers/kline_provider.dart';
 import 'package:tomapp/providers/market_overview_provider.dart';
 import 'package:tomapp/services/long_short_provider.dart';
 import 'package:tomapp/widgets/interval_selector.dart';
-import 'package:tomapp/widgets/kline_chart_widget.dart';
+import 'package:tomapp/widgets/flchart_kline_widget.dart';
 import 'package:tomapp/models/kline_data.dart';
 
 class KlineScreen extends StatefulWidget {
@@ -14,6 +14,9 @@ class KlineScreen extends StatefulWidget {
   /// 下跌段起始时间（毫秒时间戳），用于 K 线高亮标注。
   final int? highlightStartMs;
 
+  /// 下跌段结束（swing low）时间戳，作为红/绿两段标注的分界。
+  final int? highlightDropEndMs;
+
   /// 拉回段结束时间（毫秒时间戳），用于 K 线高亮标注。
   final int? highlightEndMs;
 
@@ -22,6 +25,7 @@ class KlineScreen extends StatefulWidget {
     required this.symbol,
     this.defaultInterval,
     this.highlightStartMs,
+    this.highlightDropEndMs,
     this.highlightEndMs,
   });
 
@@ -69,6 +73,7 @@ class _KlineScreenState extends State<KlineScreen> {
           // K线图表 - 限制高度，只监听图表数据变化
           _KlineChartWidget(
             highlightStartMs: widget.highlightStartMs,
+            highlightDropEndMs: widget.highlightDropEndMs,
             highlightEndMs: widget.highlightEndMs,
           ),
 
@@ -236,48 +241,52 @@ class _PriceInfoWidget extends StatelessWidget {
   }
 }
 
-/// K线图表 - 添加 RepaintBoundary 隔离重绘，限制高度
+/// K线图表 - 添加 RepaintBoundary 隔离重绘，限制高度。
+///
+/// 采用 [FlChartKlineWidget]（fl_chart 自绘，与反弹检测测试页一致）：
+/// 固定蜡烛宽度、右侧价格刻度、涨跌幅、最新价虚线、成交量、单指水平拖动。
+/// highlight 时间戳在 build 时转成全量 window 索引（数据实时变化时索引稳定靠时间戳匹配）。
 class _KlineChartWidget extends StatelessWidget {
   final int? highlightStartMs;
+  final int? highlightDropEndMs;
   final int? highlightEndMs;
 
-  const _KlineChartWidget({this.highlightStartMs, this.highlightEndMs});
+  const _KlineChartWidget({
+    this.highlightStartMs,
+    this.highlightDropEndMs,
+    this.highlightEndMs,
+  });
+
+  /// 时间戳(ms) → klines 中首个 time≥ms 的索引；找不到返回 null。
+  int? _msToIndex(int? ms, List<KlineData> klines) {
+    if (ms == null) return null;
+    for (var i = 0; i < klines.length; i++) {
+      if (klines[i].time.millisecondsSinceEpoch >= ms) return i;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Selector<KlineProvider, ({
-      List<KlineDataWithIndicators> klineData,
-      bool isRealtime,
-      double? currentPrice,
-      bool isLoading,
-      bool hasData,
-      String interval
-    })>(
-      selector: (context, provider) => (
-        klineData: provider.klineWithIndicators,
-        isRealtime: provider.isRealtime,
-        currentPrice: provider.currentPrice,
-        isLoading: provider.isLoading,
-        hasData: provider.klineWithIndicators.isNotEmpty,
-        interval: provider.currentInterval,
-      ),
-      builder: (context, data, child) {
+    return Selector<KlineProvider, List<KlineDataWithIndicators>>(
+      selector: (context, provider) => provider.klineWithIndicators,
+      builder: (context, klineData, child) {
+        // FlChartKlineWidget 需要 List<KlineData>（不带指标）。
+        final klines = klineData.map((e) => e.data).toList();
         return SizedBox(
           height: MediaQuery.of(context).size.height * 0.25,
           child: Container(
             color: Colors.black,
-            child: data.klineData.isEmpty
+            child: klines.isEmpty
                 ? const Center(
                     child: CircularProgressIndicator(color: Colors.white),
                   )
                 : RepaintBoundary(
-                    child: KlineChartWidget(
-                      data: data.klineData,
-                      isRealtime: data.isRealtime,
-                      currentPrice: data.currentPrice,
-                      interval: data.interval,
-                      highlightStartMs: highlightStartMs,
-                      highlightEndMs: highlightEndMs,
+                    child: FlChartKlineWidget(
+                      data: klines,
+                      dropStartIndex: _msToIndex(highlightStartMs, klines),
+                      dropEndIndex: _msToIndex(highlightDropEndMs, klines),
+                      recoveryEndIndex: _msToIndex(highlightEndMs, klines),
                     ),
                   ),
           ),
