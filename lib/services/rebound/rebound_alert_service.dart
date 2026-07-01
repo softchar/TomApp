@@ -185,8 +185,14 @@ class ReboundAlertService {
     // scanner 模式：启动扫描 timer
     _scanner?.start();
 
-    // 注册 provider 跃迁回调 → 统一通知触发点（scan/收盘/5秒重评估三路径）
-    _provider.onSignalListed = _dispatchListed;
+    // 注册 provider 跃迁回调 → 统一通知触发点（scan/收盘/5秒重评估三路径）。
+    // 回调签名为 void，无法 await _dispatchListed → 包装 catchError，避免通知
+    // 分发失败（dispatch/insert 抛错）变成 unhandled future error。
+    _provider.onSignalListed = (signal) {
+      _dispatchListed(signal).catchError((Object e) {
+        debugPrint('ReboundAlertService: 进列表通知分发失败: $e');
+      });
+    };
     // 5 秒重评估定时器
     _reEvalTimer = Timer.periodic(_reEvalInterval, (_) => reEvaluateTracked());
   }

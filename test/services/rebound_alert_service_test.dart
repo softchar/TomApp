@@ -1,7 +1,5 @@
-import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tomapp/models/kline_data.dart';
-import 'package:tomapp/models/rebound_params.dart';
 import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
