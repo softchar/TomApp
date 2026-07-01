@@ -14,6 +14,7 @@ import 'package:tomapp/services/rebound/rebound_signal_repository.dart';
 import 'package:tomapp/services/binance_api_service.dart';
 import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/exchange_info_service.dart';
+import 'package:tomapp/services/theme_provider.dart';
 import 'kline_screen.dart';
 
 /// 测试期宽松模式开关（`flutter run --dart-define=LOOSE_PARAMS=true` 启用）。
@@ -25,6 +26,57 @@ const _looseForTesting = bool.fromEnvironment('LOOSE_PARAMS');
 /// 看板列表显示门槛：仅展示评分 ≥ 此值的信号（低于的不在看板列表显示，
 /// 但仍会被检测/精跟/按 high 门槛通知——此过滤仅影响列表展示）。
 const _minDisplayScore = 70;
+
+/// 信号行响应式布局决策（纯函数，无 BuildContext 依赖，单测友好）。
+///
+/// 按卡片内可用宽度决定是否显示止损列 / sparkline 及 sparkline 占位最小宽度，
+/// 配合 [ReboundDashboardScreen] 里的 `Expanded` sparkline，保证任意屏宽（含
+/// 360px）信号行永不溢出。断点锚定物理量：核心列底线 / sparkline 舒适值 / 极限值。
+@visibleForTesting
+class ReboundSignalLayout {
+  final bool showStoploss;
+  final bool showSparkline;
+  final double sparklineMin;
+
+  const ReboundSignalLayout({
+    required this.showStoploss,
+    required this.showSparkline,
+    required this.sparklineMin,
+  });
+
+  /// 非止损固定列 + 内部间隔：symbol40 + 4 + time36 + 4 + score40 + 4 + drop56 +
+  /// recovery42 + deadcat30 = 256。
+  static const double _coreColumns = 256.0;
+  /// 止损列 + 前导间隔：2 + 46 = 48。
+  static const double _stoplossBudget = 48.0;
+  /// sparkline 舒适宽（≈原 0.24×360）/ 下限 / 极限。
+  static const double _sparklineComfort = 90.0;
+  static const double _sparklineFloor = 56.0;
+  static const double _sparklineMin = 40.0;
+
+  /// 输入卡片内可用宽度，输出布局配置。
+  @visibleForTesting
+  static ReboundSignalLayout resolve(double availableWidth) {
+    // 全列 + 舒适 sparkline（屏宽≈434+）：止损+sparkline 全显示。
+    if (availableWidth >= _coreColumns + _stoplossBudget + _sparklineComfort) {
+      return const ReboundSignalLayout(
+          showStoploss: true, showSparkline: true, sparklineMin: _sparklineComfort);
+    }
+    // 裁止损，sparkline 宽裕（屏宽≈352–434，含多数 iPhone）。
+    if (availableWidth >= _coreColumns + _sparklineFloor) {
+      return const ReboundSignalLayout(
+          showStoploss: false, showSparkline: true, sparklineMin: _sparklineFloor);
+    }
+    // 裁止损，sparkline 极限（屏宽≈336–352，SE/mini）。
+    if (availableWidth >= _coreColumns + _sparklineMin) {
+      return const ReboundSignalLayout(
+          showStoploss: false, showSparkline: true, sparklineMin: _sparklineMin);
+    }
+    // core 都放不下最小 sparkline（屏宽<336，分屏/极小屏）：隐藏 sparkline。
+    return const ReboundSignalLayout(
+        showStoploss: false, showSparkline: false, sparklineMin: 0);
+  }
+}
 
 /// 反弹监控看板页面。
 ///
@@ -45,7 +97,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
   ReboundMarketScanner? _scanner;
   ReboundNotificationRepository? _notificationRepository;
   bool _isInitializing = true;
-  bool _showHistory = false;
+  bool _isRetrying = false; // 错误态重试进行中（区分首启 loading，文案不同）
+  bool _showHistory = false; // 通知历史面板折叠态
   String? _initError;
 
   @override
@@ -64,6 +117,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
   /// 按需启动全市场扫描 + 精跟编排（per 04-03：scanner REST 轮询全市场，
   /// 命中标的再由 alertService 动态精跟；看板启动避免 app 启动建全量 WS）。
   Future<void> _startAlertService() async {
+    // 重试路径进入时也显示 loading，避免闪现错误态。
+    if (mounted) setState(() => _isInitializing = true);
     try {
       final provider = context.read<ReboundScoreProvider>();
       final api = BinanceApiService();
@@ -148,24 +203,69 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
       provider.addLog('扫描器已启动 · 全市场 15m 轮询中（首轮约 40-50s）');
       _scanner!.start();
       if (mounted) setState(() => _isInitializing = false);
-    } catch (e) {
+    } catch (e, st) {
+      // 不透传原始异常给用户；完整堆栈走 debugPrint 供调试。
+      debugPrint('ReboundDashboard _startAlertService 失败: $e\n$st');
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _initError = '启动监控失败: $e';
+          _initError = _friendlyError(e);
         });
       }
     }
   }
 
+  /// 把任意异常映射成用户可读文案（分类集中在自此，便于未来扩展）。
+  String _friendlyError(Object e) {
+    final msg = e.toString();
+    if (msg.contains('SocketException') ||
+        msg.contains('HandshakeException') ||
+        msg.contains('Failed host lookup') ||
+        msg.contains('WebSocketChannelException') ||
+        msg.contains('TimeoutException')) {
+      return '市场数据连接失败';
+    }
+    if (msg.contains('429') || msg.contains('rate limit')) {
+      return '请求过于频繁，已被限流';
+    }
+    return '监控服务启动失败';
+  }
+
+  /// 错误态重试：先彻底拆旧实例（必须 await stop）→ 置空引用 → 重置 flags → 重跑启动。
+  //
+  // R1：[ReboundAlertService.stop] 是 Future 且内部会 WS disconnect + provider.clear，
+  // 必须先 await 它完成再 new 新实例，否则旧 WS 未关、新 WS 同开 → 双重订阅 → 429。
+  Future<void> _retry() async {
+    final oldAlert = _alertService;
+    final oldScanner = _scanner;
+    _alertService = null; // 先置空，防 build 期间读到半拆状态
+    _scanner = null;
+    if (oldAlert != null) {
+      try {
+        await oldAlert.stop();
+      } catch (e) {
+        debugPrint('ReboundDashboard 旧 alertService.stop 失败(忽略): $e');
+      }
+    }
+    oldScanner?.stop(); // 幂等（start 有 _timer 守卫）
+    if (mounted) {
+      setState(() {
+        _isRetrying = true;
+        _initError = null;
+      });
+    }
+    await _startAlertService();
+    if (mounted) setState(() => _isRetrying = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('合约反弹监控'),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.onBackground,
         elevation: 0,
         actions: [
           IconButton(
@@ -175,34 +275,24 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
           ),
         ],
       ),
-      body: _isInitializing
-          ? const Center(
+      body: (_isInitializing || _isRetrying)
+          ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 16),
+                  const CircularProgressIndicator(
+                      color: AppColors.textSecondary),
+                  const SizedBox(height: 16),
                   Text(
-                    '正在连接市场数据...',
-                    style: TextStyle(color: Colors.grey, fontSize: 14),
+                    _isRetrying ? '正在重新连接...' : '正在连接市场数据...',
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 14),
                   ),
                 ],
               ),
             )
           : _initError != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline,
-                          color: Colors.orange, size: 48),
-                      const SizedBox(height: 16),
-                      Text(_initError!,
-                          style: const TextStyle(
-                              color: Colors.grey, fontSize: 14)),
-                    ],
-                  ),
-                )
+              ? _buildErrorState()
               : Column(
                   children: [
                     _buildScanBanner(),
@@ -212,6 +302,60 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                     _buildRiskWarning(),
                   ],
                 ),
+    );
+  }
+
+  /// 错误态：可读文案 + 副提示 + 重试按钮（复刻 backtest_screen 金标准，
+  /// 全程用 AppColors/AppSpacing/AppTextStyles/AppRadius token）。
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md, vertical: AppSpacing.md),
+        child: Card(
+          color: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            side: const BorderSide(color: AppColors.destructive, width: 0.5),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline,
+                    color: AppColors.destructive, size: 40),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  _initError ?? '监控服务启动失败',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(color: AppColors.textPrimary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '请检查网络连接后重试',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: _isRetrying ? null : _retry,
+                  icon: _isRetrying
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: AppColors.textSecondary))
+                      : const Icon(Icons.refresh, size: 18),
+                  label: Text(_isRetrying ? '重试中...' : '重试'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -228,10 +372,11 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-          color: Colors.grey[850],
+          color: AppColors.surfaceVariant,
           child: Text(
             '全市场扫描 · 第 $round 轮 · 精跟 $tracked 个$timeStr',
-            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            style: const TextStyle(
+                color: AppColors.textSecondary, fontSize: 12),
             textAlign: TextAlign.center,
           ),
         );
@@ -251,7 +396,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
           return const Center(
             child: Text(
               '暂无监控候选',
-              style: TextStyle(color: Colors.grey, fontSize: 14),
+              style: TextStyle(
+                  color: AppColors.textSecondary, fontSize: 14),
             ),
           );
         }
@@ -264,7 +410,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                   ? const Center(
                       child: Text(
                         '暂无监控候选',
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                        style: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 14),
                       ),
                     )
                   : ListView.builder(
@@ -283,10 +430,11 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      color: Colors.grey[850],
+      color: AppColors.surfaceVariant,
       child: Text(
         '监控准备中 · $count 个合约数据加载中',
-        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        style: const TextStyle(
+            color: AppColors.textSecondary, fontSize: 12),
         textAlign: TextAlign.center,
       ),
     );
@@ -299,34 +447,37 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
         final logs = provider.logs;
         return Container(
           height: 140,
-          color: Colors.black,
+          color: AppColors.background,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.terminal, size: 12, color: Colors.grey),
+                  const Icon(Icons.terminal,
+                      size: 12, color: AppColors.textSecondary),
                   const SizedBox(width: 4),
                   Text('日志（${logs.length}）',
-                      style:
-                          const TextStyle(color: Colors.grey, fontSize: 11)),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 11)),
                   const Spacer(),
                   if (logs.isNotEmpty)
                     GestureDetector(
                       onTap: provider.clearLogs,
                       child: const Icon(Icons.delete_outline,
-                          size: 14, color: Colors.grey),
+                          size: 14, color: AppColors.textSecondary),
                     ),
                 ],
               ),
-              const Divider(height: 6, thickness: 0.5, color: Colors.grey),
+              const Divider(
+                  height: 6, thickness: 0.5, color: AppColors.border),
               Expanded(
                 child: logs.isEmpty
                     ? const Center(
                         child: Text('暂无日志',
-                            style:
-                                TextStyle(color: Colors.grey, fontSize: 11)))
+                            style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11)))
                     : ListView.builder(
                         reverse: true,
                         itemCount: logs.length,
@@ -334,7 +485,7 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                           final line = logs[logs.length - 1 - index];
                           return Text(line,
                               style: const TextStyle(
-                                color: Colors.greenAccent,
+                                color: AppColors.success,
                                 fontSize: 10.5,
                                 fontFamily: 'monospace',
                               ));
@@ -354,10 +505,10 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
       builder: (context, provider, _) {
         final history = provider.notificationHistory;
         return Container(
-          decoration: BoxDecoration(
-            color: Colors.grey[900],
-            border:
-                Border(top: BorderSide(color: Colors.grey[800]!, width: 0.5)),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(
+                top: BorderSide(color: AppColors.border, width: 0.5)),
           ),
           child: Column(
             children: [
@@ -369,17 +520,18 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: Row(
                     children: [
-                      const Icon(Icons.history, size: 14, color: Colors.grey),
+                      const Icon(Icons.history,
+                          size: 14, color: AppColors.textSecondary),
                       const SizedBox(width: 6),
                       Text('通知历史（${history.length}）',
                           style: const TextStyle(
-                              color: Colors.grey, fontSize: 12)),
+                              color: AppColors.textSecondary, fontSize: 12)),
                       const Spacer(),
                       Icon(
                           _showHistory
                               ? Icons.expand_less
                               : Icons.expand_more,
-                          color: Colors.grey,
+                          color: AppColors.textSecondary,
                           size: 18),
                     ],
                   ),
@@ -394,7 +546,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                           padding: EdgeInsets.all(12),
                           child: Text('暂无通知历史',
                               style: TextStyle(
-                                  color: Colors.grey, fontSize: 11)),
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11)),
                         ))
                       : ListView.builder(
                           shrinkWrap: true,
@@ -417,7 +570,7 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                                       width: 40,
                                       child: Text('$hh:$mm',
                                           style: const TextStyle(
-                                              color: Colors.grey,
+                                              color: AppColors.textTertiary,
                                               fontSize: 10,
                                               fontFamily: 'monospace'))),
                                   SizedBox(
@@ -425,20 +578,20 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                                       child: Text(
                                           r.symbol.replaceAll('USDT', ''),
                                           style: const TextStyle(
-                                              color: Colors.white,
+                                              color: AppColors.onBackground,
                                               fontSize: 11,
                                               fontWeight:
                                                   FontWeight.bold))),
                                   SizedBox(
                                       width: 28,
                                       child: Text('${r.score}',
-                                          style: TextStyle(
-                                              color: Colors.green[300],
+                                          style: const TextStyle(
+                                              color: AppColors.success,
                                               fontSize: 11))),
                                   Text(
                                       '${r.dropMagnitude.toStringAsFixed(1)}×ATR',
-                                      style: TextStyle(
-                                          color: Colors.red[300],
+                                      style: const TextStyle(
+                                          color: AppColors.destructive,
                                           fontSize: 10)),
                                 ],
                               ),
@@ -462,47 +615,50 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
             children: [
               Text(title,
                   style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.onBackground,
                       fontSize: 13,
                       fontWeight: FontWeight.bold)),
               const SizedBox(height: 2),
               Text(desc,
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12)),
             ],
           ),
         );
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text('字段说明', style: TextStyle(color: Colors.white)),
+        backgroundColor: AppColors.surface,
+        title: const Text('字段说明',
+            style: TextStyle(color: AppColors.onBackground)),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               item('评分（圆形徽章）',
-                  '反弹综合强度分 0-100，越高越强。由下跌幅度、拉回力度、速度等加权得出；≥70 深绿、≥40 橙、<40 灰。'),
-              item('跌幅 ×ATR',
-                  '下跌段的幅度，用 ATR（平均真实波幅）倍数表示，如 2.5×ATR。用波动率归一化，跨币可比。'),
-              item('回补%',
-                  '从反弹低点回升的比例（0-100%）。越高表示反弹力度越强、收复跌幅越多。'),
+                  '反弹综合强度分 0-100，越高越强。由下跌幅度、拉回力度、速度等加权得出；≥70 金、≥40 橙、<40 灰。'),
+              item('跌幅 ▼×ATR',
+                  '下跌段的幅度，用 ATR（平均真实波幅）倍数表示，如 2.5×ATR。用波动率归一化，跨币可比。▼ 为下跌标记（与颜色冗余，色盲友好）。'),
+              item('回补 ▲%',
+                  '从反弹低点回升的比例（0-100%）。越高表示反弹力度越强、收复跌幅越多。▲ 为回升标记。'),
               item('sparkline 折线',
-                  '该币最近收盘价走势（涨绿跌红，无轴/网格）。一眼判断反弹形态。'),
+                  '该币最近收盘价走势（涨金跌红，无轴/网格）。一眼判断反弹形态。'),
               item('死猫风险（图标）',
-                  '死猫反弹（虚假反弹）概率 0-100。≥70 红骷髅高风险、≥40 橙警告、<40 绿勾较安全。基于跌幅深度、是否放量、所处支撑位等判断。'),
+                  '死猫反弹（虚假反弹）概率 0-100。≥70 红骷髅高风险、≥40 橙警告、<40 金勾较安全。基于跌幅深度、是否放量、所处支撑位等判断。'),
               item('止损参考位',
-                  '反弹起点的 swing low（近期低点），作为参考止损价。跌破该位则反弹逻辑失效。'),
+                  '反弹起点的 swing low（近期低点），作为参考止损价。跌破该位则反弹逻辑失效。窄屏会自动隐藏，可在 K 线详情页查看。'),
               const SizedBox(height: 6),
               const Text(
                   '注：当前为测试期宽松参数（LOOSE_PARAMS），门槛大幅降低，候选偏多、质量偏低，正式阈值待 Phase 6 回测校准。',
-                  style: TextStyle(color: Colors.orange, fontSize: 11)),
+                  style: TextStyle(color: AppColors.warning, fontSize: 11)),
             ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('明白了', style: TextStyle(color: Colors.blue)),
+            child: const Text('明白了',
+                style: TextStyle(color: AppColors.info)),
           ),
         ],
       ),
@@ -513,15 +669,15 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
         border: Border(
-          top: BorderSide(color: Colors.grey[800]!, width: 1),
+          top: BorderSide(color: AppColors.border, width: 1),
         ),
       ),
       child: const Text(
         '历史回测需打 30-50% 折扣，不构成投资建议',
-        style: TextStyle(color: Colors.grey, fontSize: 12),
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
         textAlign: TextAlign.center,
       ),
     );
@@ -539,7 +695,8 @@ Widget _labeled(Widget child, String label, double width) {
       children: [
         child,
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 9)),
+        Text(label,
+            style: const TextStyle(color: AppColors.textTertiary, fontSize: 9)),
       ],
     ),
   );
@@ -552,85 +709,108 @@ class _SignalRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _navigateToKline(context),
-      child: Card(
-        color: Colors.grey[900],
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: Colors.grey[800]!, width: 0.5),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // 币种
-              SizedBox(
-                width: 40,
-                child: Text(
-                  signal.symbol.replaceAll('USDT', ''),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 按卡内可用宽度决定列裁剪；sparkline 用 Expanded 填充剩余空间，
+        // 结构性保证任意屏宽（含 360px）不溢出（per ReboundSignalLayout.resolve）。
+        final layout = ReboundSignalLayout.resolve(constraints.maxWidth);
+        return GestureDetector(
+          onTap: () => _navigateToKline(context),
+          child: Card(
+            color: AppColors.surface,
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: const BorderSide(color: AppColors.border, width: 0.5),
+            ),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // 币种
+                  SizedBox(
+                    width: 40,
+                    child: Text(
+                      signal.symbol.replaceAll('USDT', ''),
+                      style: const TextStyle(
+                        color: AppColors.onBackground,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                  const SizedBox(width: 4),
+                  // 触发时间（K 线收盘时间）
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      '${signal.timestamp.hour.toString().padLeft(2, '0')}:'
+                      '${signal.timestamp.minute.toString().padLeft(2, '0')}',
+                      style: const TextStyle(
+                          color: AppColors.textTertiary,
+                          fontSize: 10,
+                          fontFamily: 'monospace'),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // 评分
+                  _labeled(_ScoreBadge(score: signal.score), '评分', 40),
+                  const SizedBox(width: 4),
+                  // 跌幅（▼ 形状冗余 + 红色，色盲友好）
+                  _labeled(
+                    Text('▼${signal.dropMagnitude.toStringAsFixed(1)}×ATR',
+                        style: const TextStyle(
+                            color: AppColors.destructive, fontSize: 12),
+                        softWrap: false,
+                        overflow: TextOverflow.fade),
+                    '跌幅',
+                    56,
+                  ),
+                  // 回补%（▲ 形状冗余 + 金色，色盲友好）
+                  _labeled(
+                    Text('▲${(signal.recoveryRatio * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                            color: AppColors.success, fontSize: 12),
+                        softWrap: false,
+                        overflow: TextOverflow.fade),
+                    '回补',
+                    42,
+                  ),
+                  // 死猫风险（图标本身即形状冗余）
+                  _labeled(
+                      _DeadCatIndicator(score: signal.deadCatRiskScore), '死猫', 30),
+                  // 止损参考位（窄屏裁剪；K 线详情页仍可见）
+                  if (layout.showStoploss) ...[
+                    const SizedBox(width: 2),
+                    _labeled(
+                      Text(signal.swingLowPrice.toStringAsFixed(3),
+                          style: const TextStyle(
+                              color: AppColors.textTertiary, fontSize: 10)),
+                      '止损',
+                      46,
+                    ),
+                  ],
+                  // 弹性区：sparkline 用 Expanded 填充剩余空间（永不溢出、永不塌缩）；
+                  // 无 sparkline 档用 Spacer 把核心列左对齐。
+                  if (layout.showSparkline)
+                    Expanded(
+                      child: _MiniSparkline(
+                        symbol: signal.symbol,
+                        timeframe: signal.timeframe,
+                        placeholderWidth: layout.sparklineMin,
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                ],
               ),
-              const SizedBox(width: 4),
-              // 触发时间（K 线收盘时间）
-              SizedBox(
-                width: 36,
-                child: Text(
-                  '${signal.timestamp.hour.toString().padLeft(2, '0')}:'
-                  '${signal.timestamp.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 10,
-                      fontFamily: 'monospace'),
-                ),
-              ),
-              const SizedBox(width: 4),
-              // 评分
-              _labeled(_ScoreBadge(score: signal.score), '评分', 40),
-              const SizedBox(width: 4),
-              // 跌幅
-              _labeled(
-                Text('${signal.dropMagnitude.toStringAsFixed(1)}×ATR',
-                    style: TextStyle(color: Colors.red[300], fontSize: 12)),
-                '跌幅',
-                50,
-              ),
-              // 回补%
-              _labeled(
-                Text('${(signal.recoveryRatio * 100).toStringAsFixed(0)}%',
-                    style: TextStyle(color: Colors.green[300], fontSize: 12)),
-                '回补',
-                38,
-              ),
-              // 死猫风险
-              _labeled(
-                  _DeadCatIndicator(score: signal.deadCatRiskScore), '死猫', 30),
-              const SizedBox(width: 2),
-              // 止损参考位
-              _labeled(
-                Text(signal.swingLowPrice.toStringAsFixed(3),
-                    style: TextStyle(color: Colors.grey[500], fontSize: 10)),
-                '止损',
-                46,
-              ),
-              const Spacer(),
-              // 迷你 sparkline
-              _MiniSparkline(
-                symbol: signal.symbol,
-                timeframe: signal.timeframe,
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -679,9 +859,9 @@ class _ScoreBadge extends StatelessWidget {
   const _ScoreBadge({required this.score});
 
   Color get _bgColor {
-    if (score >= 70) return const Color(0xFF2E7D32); // 深绿
-    if (score >= 40) return const Color(0xFFF57F17); // 黄/橙
-    return Colors.grey[700]!;
+    if (score >= 70) return AppColors.success; // 金（强）
+    if (score >= 40) return AppColors.warning; // 橙（中）
+    return AppColors.textDisabled; // 灰（弱）
   }
 
   @override
@@ -697,7 +877,7 @@ class _ScoreBadge extends StatelessWidget {
       child: Text(
         '$score',
         style: const TextStyle(
-          color: Colors.white,
+          color: AppColors.onBackground,
           fontSize: 12,
           fontWeight: FontWeight.bold,
         ),
@@ -706,7 +886,7 @@ class _ScoreBadge extends StatelessWidget {
   }
 }
 
-/// 死猫反弹风险标注。
+/// 死猫反弹风险标注（三档不同图标，形状冗余天然存在）。
 class _DeadCatIndicator extends StatelessWidget {
   final int score;
 
@@ -719,7 +899,7 @@ class _DeadCatIndicator extends StatelessWidget {
         width: 32,
         child: Tooltip(
           message: '死猫反弹高风险',
-          child: Icon(Icons.dangerous, color: Colors.red, size: 18),
+          child: Icon(Icons.dangerous, color: AppColors.destructive, size: 18),
         ),
       );
     }
@@ -728,43 +908,50 @@ class _DeadCatIndicator extends StatelessWidget {
         width: 32,
         child: Tooltip(
           message: '注意死猫风险',
-          child: Icon(Icons.warning_amber, color: Colors.orange, size: 18),
+          child: Icon(Icons.warning_amber, color: AppColors.warning, size: 18),
         ),
       );
     }
-    // score < 40: 低风险，显示绿色勾（或不显示）
+    // score < 40: 低风险，显示金色勾
     return const SizedBox(
       width: 32,
       child: Icon(Icons.check_circle_outline,
-          color: Colors.green, size: 18),
+          color: AppColors.success, size: 18),
     );
   }
 }
 
 /// 迷你 sparkline 折线图。
+///
+/// 宽度由父级（[ReboundDashboardScreen] 信号行的 `Expanded`）决定——本组件用
+/// `width: double.infinity` 填满父约束，故随屏宽自适应、永不溢出。
+/// [placeholderWidth] 仅用于 closes 数据不足时的空态占位，防该列塌缩。
 class _MiniSparkline extends StatelessWidget {
   final String symbol;
   final String timeframe;
+  final double placeholderWidth;
 
   const _MiniSparkline({
     required this.symbol,
     required this.timeframe,
+    this.placeholderWidth = 40,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: MediaQuery.of(context).size.width * 0.24,
       height: 40,
+      width: double.infinity,
       child: Consumer<ReboundScoreProvider>(
         builder: (context, provider, _) {
           final closes = provider.getRecentCloses(symbol, timeframe);
           if (closes == null || closes.length < 2) {
-            return const SizedBox(width: 60, height: 40);
+            return SizedBox(width: placeholderWidth, height: 40);
           }
 
           final isUp = closes.last > closes.first;
-          final lineColor = isUp ? Colors.green : Colors.red;
+          final lineColor =
+              isUp ? AppColors.success : AppColors.destructive;
           final minY = closes.reduce((a, b) => a < b ? a : b) * 0.995;
           final maxY = closes.reduce((a, b) => a > b ? a : b) * 1.005;
 
