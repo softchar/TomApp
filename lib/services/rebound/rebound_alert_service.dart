@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:tomapp/models/kline_data.dart';
 import 'package:tomapp/models/rebound_params.dart';
-import 'package:tomapp/models/alert_level.dart';
 import 'package:tomapp/models/rebound_notification_record.dart';
 import 'package:tomapp/models/rebound_signal.dart';
 import 'package:tomapp/providers/rebound_score_provider.dart';
@@ -38,6 +37,10 @@ class ReboundAlertService {
 
   /// watchlist churn 定时器（每小时刷新 exchangeInfo）
   Timer? _watchlistTimer;
+
+  /// 5 秒重评估定时器：对 tracked symbol 用最新 window 重新检测。
+  Timer? _reEvalTimer;
+  static const Duration _reEvalInterval = Duration(seconds: 5);
 
   /// 当前已订阅的 symbols
   final Set<String> _subscribedSymbols = {};
@@ -128,11 +131,12 @@ class ReboundAlertService {
     }
   }
 
-  /// 退出精跟：unsubscribe + 移除 provider 信号 + 清未命中计数（per D3）。
+  /// 退出精跟：unsubscribe + 清未命中计数。
+  /// **不删 provider 信号**（per 需求：列表数据运行中不丢失）；
+  /// 信号仅在 scanner/收盘路径 upsert(null) 且跌破门槛时移除。
   Future<void> untrackSymbol(String symbol) async {
     _trackedSymbols.remove(symbol);
     _streamService.unsubscribe([symbol]);
-    _provider.removeSymbol(symbol);
     _missCountBySymbol.remove(symbol);
   }
 
@@ -180,6 +184,11 @@ class ReboundAlertService {
 
     // scanner 模式：启动扫描 timer
     _scanner?.start();
+
+    // 注册 provider 跃迁回调 → 统一通知触发点（scan/收盘/5秒重评估三路径）
+    _provider.onSignalListed = _dispatchListed;
+    // 5 秒重评估定时器
+    _reEvalTimer = Timer.periodic(_reEvalInterval, (_) => reEvaluateTracked());
   }
 
   /// 停止编排器：断开 WS + 取消订阅 + 清空 provider。
@@ -189,6 +198,9 @@ class ReboundAlertService {
     _watchlistTimer?.cancel();
     _watchlistTimer = null;
     _scanner?.stop();
+    _reEvalTimer?.cancel();
+    _reEvalTimer = null;
+    _provider.onSignalListed = null;
     _throttler?.reset();
     _throttler = null;
     _streamService.disconnect();
@@ -203,17 +215,14 @@ class ReboundAlertService {
   /// 生产路径由 closedKlines stream listener 调用；测试直接调用。
   @visibleForTesting
   Future<void> handleClosedKline(ClosedKline c) async {
-    // 1. warm-up 期间不触发（per D-06）
+    // 1. warm-up 防护（保持原逻辑不变）
     if (_streamService.isWarmingUp(c.symbol, c.timeframe)) {
-      // 更新 warm-up 状态到 provider
       if (!_warmingSymbols.contains(c.symbol)) {
         _warmingSymbols.add(c.symbol);
         _provider.updateWarmingUpSymbols(_warmingSymbols.toSet());
       }
       return;
     }
-
-    // warm-up 完成后从集合中移除（检查该 symbol 所有 TF 是否都结束 warm-up）
     if (_warmingSymbols.contains(c.symbol)) {
       final stillWarming = monitoredTimeframes.any(
         (tf) => _streamService.isWarmingUp(c.symbol, tf),
@@ -224,87 +233,84 @@ class ReboundAlertService {
       }
     }
 
-    // 2. 获取 rolling window
+    // 2. 取 window + 评估（isClosedEvent=true：写库 + missCount）
     final window = _streamService.windowOf(c.symbol, c.timeframe);
     if (window == null || window.isEmpty) return;
+    await _evaluateWindow(c.symbol, c.timeframe, window, isClosedEvent: true);
+  }
 
-    // 3. 调用纯函数检测器（Phase 2，per D-01）
+  /// 公共评估管线：detector → mtf 加分 → provider.upsert →（跃迁触发通知）。
+  ///
+  /// [isClosedEvent]：true=收盘事件路径（写库 + 更新 missCount）；
+  /// false=5 秒重评估路径（只刷内存+UI，不写库，不算 missCount）。
+  /// 通知不在本方法内——由 provider.upsert 的进列表跃迁统一触发 [_dispatchListed]。
+  Future<void> _evaluateWindow(
+    String symbol,
+    String tf,
+    List<KlineData> window, {
+    required bool isClosedEvent,
+  }) async {
     final rawSignal = _detector.evaluate(
       List<KlineData>.from(window),
       _params,
-      symbol: c.symbol,
-      timeframe: c.timeframe,
+      symbol: symbol,
+      timeframe: tf,
     );
-    // 标记反弹是否在最新一根确认（recoveryEndIndex == window 末根），用于收紧通知门槛。
-    final signal = rawSignal == null
-        ? null
-        : rawSignal.copyWith(
-            isLatestBar: rawSignal.recoveryEndIndex == window.length - 1);
+    final signal = rawSignal?.copyWith(
+        isLatestBar: rawSignal.recoveryEndIndex == window.length - 1);
 
-    // 4. 更新 per-(symbol,TF) 信号快照
-    _signalsBySymbol.putIfAbsent(c.symbol, () => {});
-    _signalsBySymbol[c.symbol]![c.timeframe] = signal;
+    _signalsBySymbol.putIfAbsent(symbol, () => {});
+    _signalsBySymbol[symbol]![tf] = signal;
 
-    // 5. 跨周期共振评分（per D-04 / SCORE-01 mtfConfluence）
     final mtfScore = ReboundConfluenceScorer.scoreMultiTimeframe(
-      _signalsBySymbol[c.symbol] ?? {},
+      _signalsBySymbol[symbol] ?? {},
     );
 
-    // 提取最近最多 20 根收盘价用于 sparkline 渲染
     final closes = window.length > 20
         ? window.sublist(window.length - 20).map((k) => k.close).toList()
         : window.map((k) => k.close).toList();
 
-    // 6. 将 mtfScore 加到 signal.score（clamp 0-100）并更新 provider
-    ReboundSignal? enriched;
     if (signal != null) {
-      enriched = signal.copyWith(
-        score: (signal.score + mtfScore).clamp(0, 100),
-      );
-      _provider.upsert(c.symbol, c.timeframe, enriched,
-          recentCloses: closes);
-      // 04-03: 命中 → 重置未命中计数（维持精跟）
-      if (_trackedSymbols.contains(c.symbol)) {
-        _missCountBySymbol[c.symbol] = 0;
+      final enriched = signal.copyWith(
+          score: (signal.score + mtfScore).clamp(0, 100));
+      _provider.upsert(symbol, tf, enriched,
+          recentCloses: closes, persist: isClosedEvent);
+      if (isClosedEvent && _trackedSymbols.contains(symbol)) {
+        _missCountBySymbol[symbol] = 0;
       }
     } else {
-      _provider.upsert(c.symbol, c.timeframe, null,
-          recentCloses: closes);
-      // 04-03: 连续未命中达 missThreshold → 退出精跟（per D3）
-      if (_trackedSymbols.contains(c.symbol)) {
-        final count = (_missCountBySymbol[c.symbol] ?? 0) + 1;
-        _missCountBySymbol[c.symbol] = count;
+      _provider.upsert(symbol, tf, null,
+          recentCloses: closes, persist: isClosedEvent);
+      if (isClosedEvent && _trackedSymbols.contains(symbol)) {
+        final count = (_missCountBySymbol[symbol] ?? 0) + 1;
+        _missCountBySymbol[symbol] = count;
         if (count >= missThreshold) {
-          // fire-and-forget：handleClosedKline 为 sync void，不破坏 stream listener 签名
-          untrackSymbol(c.symbol);
+          untrackSymbol(symbol);
         }
       }
     }
+  }
 
-    // 7. 通知管线——用 enriched（含 mtf 加分 + isLatestBar），仅最新一根 + high 才推送并记录历史。
-    if (enriched != null) {
-      await _dispatchIfHigh(enriched);
+  /// 5 秒重评估：遍历 tracked symbols × timeframes，用最新 window 重新检测。
+  /// 定时器在 start() 启动；本方法暴露供测试直接调用（不等 5 秒）。
+  @visibleForTesting
+  Future<void> reEvaluateTracked() async {
+    for (final sym in List<String>.from(_trackedSymbols)) {
+      for (final tf in monitoredTimeframes) {
+        if (_streamService.isWarmingUp(sym, tf)) continue;
+        final window = _streamService.windowOf(sym, tf);
+        if (window == null || window.isEmpty) continue;
+        await _evaluateWindow(sym, tf, window, isClosedEvent: false);
+      }
     }
   }
 
-  /// 扫描命中立即通知入口（供 dashboard onScanComplete 调用）。
+  /// 进列表通知：由 provider.onSignalListed 跃迁回调触发。
   ///
-  /// 与 [handleClosedKline] 共享同一通知判定 [_dispatchIfHigh] → 共享
-  /// [_throttler] 节流状态：同一 symbol 扫描命中通知后，4h 内 WS 收盘再判定
-  /// 会被冷却拦截，避免扫描与收盘双重通知。
-  Future<void> notifyOnSignal(ReboundSignal signal) async {
-    await _dispatchIfHigh(signal);
-  }
-
-  /// 通知判定：经 [AlertThrottler] 五道闸门后，仅 high 级推送给 [_notificationService]。
-  ///
-  /// scanner（[notifyOnSignal]）与 WS 收盘（[handleClosedKline]）共享本方法 →
-  /// 共享 [_throttler] 节流状态，同 symbol 4h 冷却内不重复通知。
-  /// 仅当 [ReboundSignal.isLatestBar]（最新一根确认）且 high 级才推送，
-  /// 避免通知数根前的旧反弹 + 中低分打扰；推送后写入通知历史。
-  Future<void> _dispatchIfHigh(ReboundSignal signal) async {
-    // 只通知最新一根确认的反弹（需求：最新蜡烛是反弹才通知）。
-    if (!signal.isLatestBar) return;
+  /// 跑 [AlertThrottler] 冷却(4h)+日上限+跨日重置（分级仅选渠道 high/med）；
+  /// decision 非空 → 推送 + 写历史。输入信号均 score≥70（必过 medium 分级）。
+  /// 不再要求 isLatestBar（进列表即推）。
+  Future<void> _dispatchListed(ReboundSignal signal) async {
     final toggles = _alertSettings?.timeframeToggles ??
         {for (final tf in monitoredTimeframes) tf: true};
     final highTh = _alertSettings?.highThreshold ?? 75;
@@ -316,22 +322,20 @@ class ReboundAlertService {
       highThreshold: highTh,
       medThreshold: medTh,
     );
+    if (decision == null) return;
 
-    if (decision != null && decision.level == AlertLevel.high) {
-      await _notificationService.dispatch(decision);
-      // 持久化 + 同步内存历史（用同一时间戳保持一致）
-      final now = DateTime.now();
-      await _notificationRepository.insert(signal, notifiedAt: now);
-      _provider.addNotificationHistory(ReboundNotificationRecord(
-        symbol: signal.symbol,
-        timeframe: signal.timeframe,
-        score: signal.score,
-        deadCatRiskScore: signal.deadCatRiskScore,
-        dropMagnitude: signal.dropMagnitude,
-        recoveryRatio: signal.recoveryRatio,
-        notifiedAt: now,
-      ));
-    }
+    await _notificationService.dispatch(decision);
+    final now = DateTime.now();
+    await _notificationRepository.insert(signal, notifiedAt: now);
+    _provider.addNotificationHistory(ReboundNotificationRecord(
+      symbol: signal.symbol,
+      timeframe: signal.timeframe,
+      score: signal.score,
+      deadCatRiskScore: signal.deadCatRiskScore,
+      dropMagnitude: signal.dropMagnitude,
+      recoveryRatio: signal.recoveryRatio,
+      notifiedAt: now,
+    ));
   }
 
   /// watchlist churn：对比已知合约列表，移除下架、添加新上线（per D-09）。

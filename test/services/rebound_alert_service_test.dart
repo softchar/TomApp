@@ -13,6 +13,7 @@ import 'package:tomapp/services/rebound/rebound_notification_repository.dart';
 import 'package:tomapp/services/rebound/rebound_notification_service.dart';
 import 'package:tomapp/services/rebound/rebound_kline_stream_service.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
+import 'package:tomapp/services/rebound/rebound_timeframes.dart';
 import 'package:tomapp/services/binance_api_service.dart';
 
 /// Phase 3 / D-04：ReboundAlertService 编排器集成测试。
@@ -316,7 +317,7 @@ void main() {
     });
   });
 
-  group('ReboundAlertService 通知（最新一根 + high 才推送并记录历史）', () {
+  group('ReboundAlertService 进列表通知（provider 跃迁触发）', () {
     late _MockStreamService mockStream;
     late _SpyNotificationService notifSpy;
     late _SpyNotificationRepository repoSpy;
@@ -333,39 +334,109 @@ void main() {
         notificationService: notifSpy,
         notificationRepository: repoSpy,
       );
-      await svc.start([]); // 初始化 _throttler + 通知服务
+      await svc.start([]); // 注册 provider.onSignalListed = _dispatchListed
     });
 
-    tearDown(() async {
-      await svc.stop();
-    });
+    tearDown(() async => svc.stop());
 
-    test('最新一根 + high 级信号触发推送并记录历史', () async {
-      await svc.notifyOnSignal(_highSignal('BTCUSDT'));
+    test('score≥70 首次进列表 → 推送 + 记录历史', () async {
+      provider.upsert('BTCUSDT', '15m', _highSignal('BTCUSDT'));
+      await Future<void>.delayed(Duration.zero);
       expect(notifSpy.dispatched, hasLength(1));
-      expect(notifSpy.dispatched.first.level, AlertLevel.high);
-      expect(repoSpy.inserted, hasLength(1), reason: '应持久化到历史');
-      expect(provider.notificationHistory, hasLength(1), reason: '内存历史同步');
-      expect(provider.notificationHistory.first.symbol, 'BTCUSDT');
+      expect(repoSpy.inserted, hasLength(1));
+      expect(provider.notificationHistory, hasLength(1));
     });
 
-    test('非最新一根（isLatestBar=false）不推送、不记录', () async {
-      await svc.notifyOnSignal(_highSignal('BTCUSDT', isLatestBar: false));
-      expect(notifSpy.dispatched, isEmpty, reason: '非最新一根不推送');
-      expect(repoSpy.inserted, isEmpty);
+    test('score 70-74（medium 渠道）也推送', () async {
+      provider.upsert('X', '15m', _medListedSignal('X'));
+      await Future<void>.delayed(Duration.zero);
+      expect(notifSpy.dispatched, hasLength(1));
+      expect(notifSpy.dispatched.first.level, AlertLevel.medium);
     });
 
-    test('medium 级信号不推送（只推 high）', () async {
-      await svc.notifyOnSignal(_medSignal('ETHUSDT'));
-      expect(notifSpy.dispatched, isEmpty,
-          reason: 'medium 仅看板可见，不推送');
+    test('score<70 不推送', () async {
+      provider.upsert('Y', '15m', _medSignal('Y'));
+      await Future<void>.delayed(Duration.zero);
+      expect(notifSpy.dispatched, isEmpty);
     });
 
-    test('同 symbol 4h 内第二次被冷却拦截（scanner/WS 共享 throttler）', () async {
-      await svc.notifyOnSignal(_highSignal('BTCUSDT'));
-      await svc.notifyOnSignal(_highSignal('BTCUSDT'));
+    test('isLatestBar=false 的 ≥70 信号仍推送（进列表即推）', () async {
+      provider.upsert('Z', '15m', _highSignal('Z', isLatestBar: false));
+      await Future<void>.delayed(Duration.zero);
+      expect(notifSpy.dispatched, hasLength(1));
+    });
+
+    test('同 symbol 4h 冷却：跃迁+throttler 拦截重复', () async {
+      // 第一次进列表 → 推送
+      provider.upsert('A', '15m', _highSignal('A'));
+      await Future<void>.delayed(Duration.zero);
+      // 跌出再进列表（模拟跨门槛）→ throttler 4h 冷却拦截
+      provider.upsert('A', '15m', null);
+      provider.upsert('A', '15m', _highSignal('A'));
+      await Future<void>.delayed(Duration.zero);
       expect(notifSpy.dispatched, hasLength(1),
-          reason: 'per-symbol 4h 冷却，同 symbol 不重复通知');
+          reason: '同 symbol 4h 内冷却拦截');
+    });
+  });
+
+  group('ReboundAlertService 5 秒重评估', () {
+    test('reEvaluateTracked 对 tracked symbol 用 window 重检测 + upsert', () async {
+      final mockStream = _MockStreamService(BinanceApiService());
+      final svc = ReboundAlertService(
+        streamService: mockStream,
+        detector: detector,
+        provider: provider,
+        notificationService: _SpyNotificationService(),
+        notificationRepository: _SpyNotificationRepository(),
+      );
+      final scanner = ReboundMarketScanner(
+        fetchKlines:
+            ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+      scanner.onHits!({'ABCUSDT'});
+      await Future<void>.delayed(Duration.zero);
+
+      mockStream.seededWindows['ABCUSDT'] = _vShapeWindow();
+      await svc.reEvaluateTracked();
+
+      expect(
+          provider.getSignal('ABCUSDT', monitoredTimeframes.first), isNotNull,
+          reason: '5 秒重评估应用最新 window 重新检测');
+    });
+  });
+
+  group('ReboundAlertService untrackSymbol 保留信号', () {
+    test('退出精跟不清 provider 信号', () async {
+      final mockStream = _MockStreamService(BinanceApiService());
+      final svc = ReboundAlertService(
+        streamService: mockStream,
+        detector: detector,
+        provider: provider,
+        notificationService: _SpyNotificationService(),
+        notificationRepository: _SpyNotificationRepository(),
+      );
+      final scanner = ReboundMarketScanner(
+        fetchKlines:
+            ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+      scanner.onHits!({'KEEPUSDT'});
+      await Future<void>.delayed(Duration.zero);
+      // _makeSignal score=80 ≥70 会触发 _dispatchListed；注入 spy 避免真实 platform channel。
+      provider.upsert('KEEPUSDT', '15m', _makeSignal('KEEPUSDT', '15m'));
+      await Future<void>.delayed(Duration.zero);
+
+      await svc.untrackSymbol('KEEPUSDT');
+      expect(svc.trackedCount, 0);
+      expect(provider.getSignal('KEEPUSDT', '15m'), isNotNull,
+          reason: '退出精跟后信号应保留');
     });
   });
 }
@@ -461,6 +532,49 @@ ReboundSignal _medSignal(String sym) => ReboundSignal(
       isLatestBar: true,
       timestamp: DateTime(2024),
     );
+
+/// score=72（≥70 进列表，但分级为 medium 渠道）。
+ReboundSignal _medListedSignal(String sym) => ReboundSignal(
+      symbol: sym,
+      timeframe: '15m',
+      dropMagnitude: 2.5,
+      recoveryRatio: 0.65,
+      speed: 2,
+      confluenceFilters: const {},
+      score: 72,
+      deadCatRiskScore: 10,
+      entryPrice: 100,
+      swingLowPrice: 90,
+      swingHighPrice: 100,
+      dropStartIndex: 20,
+      dropEndIndex: 22,
+      recoveryEndIndex: 24,
+      isLatestBar: true,
+      timestamp: DateTime(2024),
+    );
+
+/// V 型反弹 window（稳定 → 下跌 → 回升），detector 应命中。
+List<KlineData> _vShapeWindow() {
+  final list = <KlineData>[];
+  for (var i = 0; i < 20; i++) {
+    list.add(KlineData(
+        time: DateTime(2024, 1, 1, 0, i),
+        open: 100, high: 101, low: 99, close: 100, volume: 10));
+  }
+  for (var i = 0; i < 3; i++) {
+    list.add(KlineData(
+        time: DateTime(2024, 1, 1, 0, 20 + i),
+        open: 100 - i * 4.0, high: 101 - i * 4.0, low: 96 - i * 4.0,
+        close: 97 - i * 4.0, volume: 10));
+  }
+  for (var i = 0; i < 2; i++) {
+    list.add(KlineData(
+        time: DateTime(2024, 1, 1, 0, 23 + i),
+        open: 90 + i * 5.0, high: 95 + i * 5.0, low: 89 + i * 5.0,
+        close: 95 + i * 5.0, volume: 20));
+  }
+  return list;
+}
 
 /// 通知服务 spy：记录 dispatch 调用，不真正发通知。
 class _SpyNotificationService extends ReboundNotificationService {
