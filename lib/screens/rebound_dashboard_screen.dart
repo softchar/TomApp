@@ -10,6 +10,7 @@ import 'package:tomapp/services/rebound/rebound_confluence_scorer.dart';
 import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/rebound/rebound_market_scanner.dart';
 import 'package:tomapp/services/rebound/rebound_notification_repository.dart';
+import 'package:tomapp/services/rebound/rebound_signal_repository.dart';
 import 'package:tomapp/services/binance_api_service.dart';
 import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/exchange_info_service.dart';
@@ -71,6 +72,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
       final exchangeInfo = context.read<ExchangeInfoService>();
 
       _notificationRepository = ReboundNotificationRepository();
+      final signalRepository = ReboundSignalRepository();
+      provider.setSignalRepository(signalRepository);
       _alertService = ReboundAlertService(
         streamService: streamService,
         detector: detector,
@@ -123,10 +126,9 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                     ? signal.copyWith(
                         score: (signal.score + mtfScore).clamp(0, 100))
                     : signal;
-                provider.upsert(symEntry.key, tfEntry.key, enriched);
-                // 扫描命中立即通知（只推 high；与 WS 收盘共享 alertService 的
-                // throttler，同 symbol 4h 冷却内不重复通知）。
-                _alertService!.notifyOnSignal(enriched);
+                // 扫描命中写入 Provider（持久化）；通知由 provider 进列表跃迁自动触发。
+                provider.upsert(symEntry.key, tfEntry.key, enriched,
+                    persist: true);
                 count++;
               }
             }
@@ -138,6 +140,8 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
 
       _alertService!.attachScanner(_scanner!);
       await _alertService!.start([]); // 空初始，精跟集合由 scanner 命中驱动
+      // 从持久化恢复列表信号（app 重启后列表不丢失）
+      await provider.loadSignals(signalRepository.queryListed);
       // 加载历史通知（持久化 → 内存 → 历史区域）
       await provider.loadNotificationHistory(
           _notificationRepository!.queryRecent);
@@ -564,7 +568,7 @@ class _SignalRow extends StatelessWidget {
             children: [
               // 币种
               SizedBox(
-                width: 48,
+                width: 40,
                 child: Text(
                   signal.symbol.replaceAll('USDT', ''),
                   style: const TextStyle(
@@ -573,6 +577,19 @@ class _SignalRow extends StatelessWidget {
                     fontSize: 14,
                   ),
                   overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              // 触发时间（K 线收盘时间）
+              SizedBox(
+                width: 36,
+                child: Text(
+                  '${signal.timestamp.hour.toString().padLeft(2, '0')}:'
+                  '${signal.timestamp.minute.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 10,
+                      fontFamily: 'monospace'),
                 ),
               ),
               const SizedBox(width: 4),
