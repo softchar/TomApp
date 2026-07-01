@@ -225,13 +225,24 @@ void main() {
       p.dispose();
     });
 
-    test('upsert null 信号触发 delete', () async {
+    test('upsert null 信号（persist:true）触发 delete', () async {
       final repo = _FakeSignalRepo();
       final p = ReboundScoreProvider(signalRepository: repo);
       p.upsert('BTCUSDT', '15m', _signal('BTCUSDT', '15m'), persist: true);
-      p.upsert('BTCUSDT', '15m', null);
+      p.upsert('BTCUSDT', '15m', null, persist: true);
       await Future<void>.delayed(Duration.zero);
       expect(repo.deleted, hasLength(1));
+      p.dispose();
+    });
+
+    test('upsert null 信号（persist:false）不删库（5秒重评估路径）', () async {
+      final repo = _FakeSignalRepo();
+      final p = ReboundScoreProvider(signalRepository: repo);
+      p.upsert('BTCUSDT', '15m', _signal('BTCUSDT', '15m'), persist: true);
+      p.upsert('BTCUSDT', '15m', null, persist: false);
+      await Future<void>.delayed(Duration.zero);
+      expect(repo.deleted, isEmpty,
+          reason: 'partial 评估的 null 不应删库，避免信号凭空消失');
       p.dispose();
     });
 

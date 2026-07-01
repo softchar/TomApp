@@ -405,6 +405,40 @@ void main() {
           provider.getSignal('ABCUSDT', monitoredTimeframes.first), isNotNull,
           reason: '5 秒重评估应用最新 window 重新检测');
     });
+
+    test('5 秒重评估 detector 返回 null 时保留旧信号（不闪烁/不丢库）', () async {
+      final mockStream = _MockStreamService(BinanceApiService());
+      final svc = ReboundAlertService(
+        streamService: mockStream,
+        detector: detector,
+        provider: provider,
+        notificationService: _SpyNotificationService(),
+        notificationRepository: _SpyNotificationRepository(),
+      );
+      final scanner = ReboundMarketScanner(
+        fetchKlines:
+            ({required symbol, required interval, required limit}) async => [],
+        detector: detector,
+        symbolsProvider: () async => [],
+      );
+      svc.attachScanner(scanner);
+      await svc.start([]);
+      scanner.onHits!({'KEEPUSDT'});
+      await Future<void>.delayed(Duration.zero);
+
+      // 先用 V 型 window 命中，写入信号
+      mockStream.seededWindows['KEEPUSDT'] = _vShapeWindow();
+      await svc.reEvaluateTracked();
+      expect(provider.getSignal('KEEPUSDT', monitoredTimeframes.first),
+          isNotNull);
+
+      // 再用 flat window（detector null）重评估 → 旧信号应保留
+      mockStream.seededWindows['KEEPUSDT'] = _flatWindow();
+      await svc.reEvaluateTracked();
+      expect(provider.getSignal('KEEPUSDT', monitoredTimeframes.first),
+          isNotNull,
+          reason: 'partial 评估的 null 不应清除已展示的信号');
+    });
   });
 
   group('ReboundAlertService untrackSymbol 保留信号', () {
@@ -550,6 +584,15 @@ ReboundSignal _medListedSignal(String sym) => ReboundSignal(
       isLatestBar: true,
       timestamp: DateTime(2024),
     );
+
+/// Flat window（稳定价位，无反弹形态），detector 返回 null。
+List<KlineData> _flatWindow() {
+  return List.generate(
+      25,
+      (i) => KlineData(
+          time: DateTime(2024, 1, 1, 0, i),
+          open: 100, high: 101, low: 99, close: 100, volume: 10));
+}
 
 /// V 型反弹 window（稳定 → 下跌 → 回升），detector 应命中。
 List<KlineData> _vShapeWindow() {

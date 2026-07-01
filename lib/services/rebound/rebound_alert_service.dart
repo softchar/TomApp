@@ -284,10 +284,10 @@ class ReboundAlertService {
       if (isClosedEvent && _trackedSymbols.contains(symbol)) {
         _missCountBySymbol[symbol] = 0;
       }
-    } else {
-      _provider.upsert(symbol, tf, null,
-          recentCloses: closes, persist: isClosedEvent);
-      if (isClosedEvent && _trackedSymbols.contains(symbol)) {
+    } else if (isClosedEvent) {
+      // 仅收盘路径的 null 才正式移除信号（内存 + DB）并累积未命中计数。
+      _provider.upsert(symbol, tf, null, recentCloses: closes, persist: true);
+      if (_trackedSymbols.contains(symbol)) {
         final count = (_missCountBySymbol[symbol] ?? 0) + 1;
         _missCountBySymbol[symbol] = count;
         if (count >= missThreshold) {
@@ -295,6 +295,9 @@ class ReboundAlertService {
         }
       }
     }
+    // 5 秒重评估（!isClosedEvent）signal==null：保留 provider 旧信号——
+    // partial window 未收盘，detector 返回 null 是暂时的（spec：评分随价波动），
+    // 此处不清内存/不写库/不算 missCount，避免列表闪烁与误删（per 需求 ②）。
   }
 
   /// 5 秒重评估：遍历 tracked symbols × timeframes，用最新 window 重新检测。

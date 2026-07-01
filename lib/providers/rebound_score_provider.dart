@@ -145,8 +145,12 @@ class ReboundScoreProvider extends ChangeNotifier {
           _signalRepo!.upsert(signal).catchError((Object _) {});
         }
       } else {
-        // ignore: unawaited_futures
-        _signalRepo!.delete(symbol, tf).catchError((Object _) {});
+        // 仅低频路径（persist=true）才删库；5 秒重评估（persist=false）的 null
+        // 不删库——partial 评估的 null 是暂时的，真正移除只由收盘/扫描路径触发。
+        if (persist) {
+          // ignore: unawaited_futures
+          _signalRepo!.delete(symbol, tf).catchError((Object _) {});
+        }
       }
     }
 
