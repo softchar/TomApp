@@ -18,8 +18,10 @@ class DatabaseHelper {
   String? _dbPath;
 
   static const String _databaseName = 'tomapp.db';
-  // v4：drift 管理的 klines/backtest_runs/backtest_trades；v5：rebound_notifications（通知历史）。
-  static const int _databaseVersion = 5;
+  // v4：drift 管理的 klines/backtest_runs/backtest_trades；
+  // v5：rebound_notifications（通知历史）；
+  // v6：rebound_signals（看板列表信号持久化）。
+  static const int _databaseVersion = 6;
   static int get currentVersion => _databaseVersion;
 
   Database? _database;
@@ -101,6 +103,9 @@ class DatabaseHelper {
 
     // v5：反弹通知历史表（onCreate 全新安装路径）。
     await _createReboundNotificationsTable(db);
+
+    // v6：看板列表信号表（onCreate 全新安装路径）。
+    await _createReboundSignalsTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -147,6 +152,11 @@ class DatabaseHelper {
     if (oldVersion < 5) {
       // v5：反弹通知历史表（onUpgrade 升级路径）。
       await _createReboundNotificationsTable(db);
+    }
+
+    if (oldVersion < 6) {
+      // v6：看板列表信号表（onUpgrade 升级路径）。
+      await _createReboundSignalsTable(db);
     }
   }
 
@@ -217,6 +227,37 @@ class DatabaseHelper {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_rebound_notified_at
       ON rebound_notifications(notifiedAt DESC)
+    ''');
+  }
+
+  /// v6：创建看板列表信号表（onCreate 与 onUpgrade 双路径）。
+  ///
+  /// 持久化 score≥70 的列表信号，app 重启后由 ReboundSignalRepository.queryListed 恢复。
+  /// PK 为 (symbol, timeframe)：upsert 覆盖同位置；confluenceFilters 不存（展示不用）。
+  Future<void> _createReboundSignalsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS rebound_signals (
+        symbol TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        deadCatRiskScore INTEGER NOT NULL,
+        dropMagnitude REAL NOT NULL,
+        recoveryRatio REAL NOT NULL,
+        entryPrice REAL NOT NULL,
+        swingLowPrice REAL NOT NULL,
+        swingHighPrice REAL NOT NULL,
+        dropStartIndex INTEGER NOT NULL,
+        dropEndIndex INTEGER NOT NULL,
+        recoveryEndIndex INTEGER NOT NULL,
+        isLatestBar INTEGER NOT NULL,
+        klineCloseTime INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        PRIMARY KEY (symbol, timeframe)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_rebound_signals_score
+      ON rebound_signals(score DESC)
     ''');
   }
 
