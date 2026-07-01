@@ -2,25 +2,33 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:tomapp/models/kline_data.dart';
 
-/// fl_chart 原生绘制的 K 线图组件（对比 TradingView WebView 版本用）。
+/// fl_chart 原生绘制的 K 线图组件。
 ///
-/// 接口与 TradingViewKlineWidget 一致（data / dropStartIndex / dropEndIndex /
-/// recoveryEndIndex）。**data 为全量窗口**（可拖动查看历史）。
+/// 蜡烛**固定粗细**、从左到右**等距**排列；支持单指水平拖动、最新价虚线、
+/// 涨跌幅、右侧价格刻度、底部成交量、**MA5/MA10/MA20 均线**、**底部时间轴**。
 ///
-/// 蜡烛**固定粗细**、从左到右**等距**排列：每根蜡烛占据固定像素宽度
-/// （[_candleStep]），数据不足时右侧留白，不再把少量蜡烛撑满整行。
-/// 支持**单指水平拖动**查看更早的历史蜡烛；默认跟随最新 K线（贴右端）。
+/// [data] 为全量窗口（可拖动查看历史）。
+/// [ma5]/[ma10]/[ma20] 为与 [data] 等长的均线序列（null = 该位置周期数据不足）；
+///   可选，不传则不画均线（如反弹检测测试页的模拟数据）。
+/// [interval] 用于时间轴格式（'1m'/'15m'/'1h'/'4h'/'1d'）；可选。
 ///
-/// 实现要点：fl_chart 会把 [minX, maxX] 线性映射到整宽，因此令 maxX = 宽度/步长
-/// （远大于最后一根的索引），getPixelX(i) = i × 步长，蜡烛即固定间距、从左排列。
-///
-/// 注：fl_chart 1.2.0 的 CandlestickChartData 未开放 extraLinesData，
-/// 最新价虚线、成交量改用 Stack 叠加 CustomPaint 实现（与蜡烛严格对齐）。
+/// 实现要点：fl_chart 把 [minX, maxX] 线性映射到整宽，故令 maxX = 宽度/步长
+/// （远大于最后一根索引），getPixelX(i) = i × 步长，蜡烛即固定间距、从左排列。
+/// fl_chart 1.2.0 的 CandlestickChartData 未开放 extraLinesData，MA 均线、最新价
+/// 虚线、成交量改用 Stack 叠加 CustomPaint 实现（与蜡烛严格对齐）。
 class FlChartKlineWidget extends StatefulWidget {
   final List<KlineData> data;
   final int? dropStartIndex;
   final int? dropEndIndex;
   final int? recoveryEndIndex;
+
+  /// MA 均线序列（全量，与 [data] 等长）。null 元素 = 该位置周期数据不足，跳过。
+  final List<double?>? ma5;
+  final List<double?>? ma10;
+  final List<double?>? ma20;
+
+  /// K 线周期，用于时间轴格式。
+  final String? interval;
 
   const FlChartKlineWidget({
     super.key,
@@ -28,6 +36,10 @@ class FlChartKlineWidget extends StatefulWidget {
     this.dropStartIndex,
     this.dropEndIndex,
     this.recoveryEndIndex,
+    this.ma5,
+    this.ma10,
+    this.ma20,
+    this.interval,
   });
 
   @override
@@ -37,15 +49,18 @@ class FlChartKlineWidget extends StatefulWidget {
 class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
   static const Color _upColor = Color(0xFFef5350); // 涨 = 红
   static const Color _downColor = Color(0xFF26a69a); // 跌 = 绿
-  static const Color _gridColor = Color(0xFF1a1a1a);
+  static const Color _gridColor = Color(0xFF222222); // 横向网格（略加深，可见）
+
+  // 反弹段标记色：用对比色避免与红/绿蜡烛撞色。
+  static const Color _dropMarkColor = Color(0xFFAB47BC); // 下跌段 = 紫
+  // 回补段沿用 _downColor（绿）—— 回补段以红蜡烛为主，绿标记可分辨。
 
   /// 每根蜡烛占据的水平像素（实体 + 间隔），固定值。
-  /// 蜡烛中心位置 = 索引 × [_candleStep] + [_candleStep]/2，因此从左到右等距排列，
-  /// 与数据量无关 —— 少量蜡烛不会被拉散撑满整行。
-  static const double _candleStep = 6;
+  /// 蜡烛中心位置 = 索引 × [_candleStep] + [_candleStep]/2，因此从左到右等距排列。
+  static const double _candleStep = 8; // 加粗（原 6），大屏显示 ~129 根、实体清晰
 
-  /// 蜡烛实体宽度（< [_candleStep]，留出间隔），固定值 → 粗细恒定、偏细。
-  static const double _bodyWidth = 4;
+  /// 蜡烛实体宽度（< [_candleStep]，留出间隔）。
+  static const double _bodyWidth = 6; // 加粗（原 4）
 
   /// 右侧价格刻度区宽度（像素）。
   static const double _priceAxisWidth = 46;
@@ -65,6 +80,18 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
     if (p >= 100) return p.toStringAsFixed(2);
     if (p >= 1) return p.toStringAsFixed(3);
     return p.toStringAsFixed(5);
+  }
+
+  /// 时间轴格式：日级周期显 MM/DD，小时级显 MM/DD HH:MM，分钟级显 HH:MM。
+  String _fmtTime(DateTime t) {
+    final interval = widget.interval;
+    final mm = t.month.toString().padLeft(2, '0');
+    final dd = t.day.toString().padLeft(2, '0');
+    if (interval == '1d' || interval == '1w') return '$mm/$dd';
+    final hh = t.hour.toString().padLeft(2, '0');
+    final min = t.minute.toString().padLeft(2, '0');
+    if (interval == '1h' || interval == '4h') return '$mm/$dd $hh:$min';
+    return '$hh:$min';
   }
 
   @override
@@ -93,12 +120,10 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
     final capacity = (width / _candleStep).floor();
     if (capacity < 1) return;
     final maxEdge = (n - 1).toDouble();
-    // 右端最小值：窗口左端贴到数据起点（startIdx=0）时 rightEdge = capacity-1。
-    // 数据少于容量时已全部显示，右端就是最后一根。
     final minEdge = n <= capacity ? maxEdge : (capacity - 1).toDouble();
     setState(() {
       if (d.focalPointDelta.dx != 0) {
-        final idxPerPx = 1 / _candleStep; // 每像素 = 1/步长 根蜡烛
+        const idxPerPx = 1 / _candleStep;
         _rightEdge = _cl(
             _rightEdge - d.focalPointDelta.dx * idxPerPx, minEdge, maxEdge);
       }
@@ -122,23 +147,25 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
           final width = c.maxWidth;
           final chartW = width - _priceAxisWidth; // 蜡烛区宽度（右侧留价格刻度）
           final capacity = (chartW / _candleStep).floor().clamp(1, 1 << 30);
-          // 可见窗口 [startIdx, endIdx]（相对全量 data）
           final endIdx = _cl(_rightEdge, 0, (n - 1).toDouble()).round();
           final startIdx = (endIdx - capacity + 1).clamp(0, endIdx < 0 ? 0 : endIdx);
-          // X 轴：minX=0，maxX=蜡烛区宽度/步长 → getPixelX(i)=i×步长，固定间距。
           final maxX = (chartW / _candleStep).clamp(1.0, 1e9).toDouble();
 
-          // 收集可见蜡烛 + 成交量 + 价格极值
+          // 收集可见蜡烛 + 成交量 + 价格极值 + 可见 MA 点
           double dataMin = double.infinity;
           double dataMax = double.negativeInfinity;
           double maxVol = 0;
           final spots = <CandlestickSpot>[];
           final vols = <double>[];
           final volColors = <Color>[];
+          final ma5Vis = <FlSpot>[];
+          final ma10Vis = <FlSpot>[];
+          final ma20Vis = <FlSpot>[];
           for (var i = startIdx; i <= endIdx; i++) {
             final k = data[i];
+            final rel = (i - startIdx).toDouble();
             spots.add(CandlestickSpot(
-              x: (i - startIdx).toDouble(),
+              x: rel,
               open: k.open,
               high: k.high,
               low: k.low,
@@ -149,19 +176,35 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
             if (k.volume > maxVol) maxVol = k.volume;
             vols.add(k.volume);
             volColors.add(k.close >= k.open ? _downColor : _upColor);
+            // MA 点：纳入极值计算，保证均线在 Y 范围内
+            final m5 = _maAt(widget.ma5, i);
+            final m10 = _maAt(widget.ma10, i);
+            final m20 = _maAt(widget.ma20, i);
+            if (m5 != null) {
+              ma5Vis.add(FlSpot(rel, m5));
+              if (m5 < dataMin) dataMin = m5;
+              if (m5 > dataMax) dataMax = m5;
+            }
+            if (m10 != null) {
+              ma10Vis.add(FlSpot(rel, m10));
+              if (m10 < dataMin) dataMin = m10;
+              if (m10 > dataMax) dataMax = m10;
+            }
+            if (m20 != null) {
+              ma20Vis.add(FlSpot(rel, m20));
+              if (m20 < dataMin) dataMin = m20;
+              if (m20 > dataMax) dataMax = m20;
+            }
           }
 
-          // Y 范围：跟随可见蜡烛极值，但最小半宽 = 中心价 ±10%。
-          // 波动小→撑到 ±10%（1% 涨幅不显高）；波动大→跟随极值（V 型下跌不裁剪）；
-          // 以极值中点为基准，仅创新高/低才变，不每根跳。
+          // Y 范围：跟随可见蜡烛 + MA 极值，最小半宽 = 中心价 ±8%。
           final center = (dataMin + dataMax) / 2;
           final dataHalf = (dataMax - dataMin) / 2;
-          final minHalf = center.abs() * 0.10;
+          final minHalf = center.abs() * 0.08;
           final half = dataHalf > minHalf ? dataHalf : minHalf;
           final yMin = center - half;
           final yMax = center + half;
 
-          // 「当前价」= 可见最后一根收盘；涨跌幅相对其前一根（跟随可见窗口）。
           final priceH = c.maxHeight * 0.85;
           final yRange = yMax - yMin;
           final lastClose = data[endIdx].close;
@@ -169,12 +212,12 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
           final isUp = lastClose >= prevClose;
           final priceColor = isUp ? _upColor : _downColor;
           final closeY = priceH * (yMax - lastClose) / yRange;
-          // 涨跌幅文字（右上角）
           final changePct =
               prevClose != 0 ? (lastClose - prevClose) / prevClose * 100 : 0.0;
           final changeText =
               '${changePct >= 0 ? '+' : ''}${changePct.toStringAsFixed(2)}%';
-          // 右侧价格刻度（5 档，均分固定范围 [yMin, yMax]）
+
+          // 右侧价格刻度（5 档）
           final priceTicks = <Widget>[];
           for (var i = 0; i <= 4; i++) {
             final p = yMin + (yMax - yMin) * i / 4;
@@ -186,6 +229,32 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
                   style: const TextStyle(color: Colors.grey, fontSize: 10)),
             ));
           }
+
+          // 底部时间轴（4 档）
+          final timeLabels = <Widget>[];
+          const timePositions = [0.0, 0.34, 0.67, 1.0];
+          final maxLeft = chartW > 44 ? chartW - 44 : 0.0;
+          for (final p in timePositions) {
+            final idx = (startIdx + (endIdx - startIdx) * p)
+                .round()
+                .clamp(startIdx, endIdx < 0 ? 0 : endIdx);
+            final x = chartW * p;
+            timeLabels.add(Positioned(
+              left: (x - 22).clamp(0.0, maxLeft),
+              bottom: 1,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                color: Colors.black54,
+                child: Text(_fmtTime(data[idx].time),
+                    style: const TextStyle(color: Colors.grey, fontSize: 9)),
+              ),
+            ));
+          }
+
+          final hasMa = widget.ma5 != null ||
+              widget.ma10 != null ||
+              widget.ma20 != null;
 
           return GestureDetector(
             onScaleUpdate: (d) => _onScaleUpdate(d, width),
@@ -201,6 +270,27 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
                         child: _buildCandlestick(
                             maxX, spots, startIdx, endIdx, yMin, yMax),
                       ),
+                      // MA 均线（叠加在蜡烛上，与蜡烛同 X/Y 坐标）
+                      if (hasMa)
+                        Positioned(
+                          left: 0,
+                          top: 0,
+                          right: _priceAxisWidth,
+                          bottom: 0,
+                          child: IgnorePointer(
+                            child: CustomPaint(
+                              painter: _MaPainter(
+                                step: _candleStep,
+                                ma5: ma5Vis,
+                                ma10: ma10Vis,
+                                ma20: ma20Vis,
+                                yMin: yMin,
+                                yMax: yMax,
+                                priceH: priceH,
+                              ),
+                            ),
+                          ),
+                        ),
                       // 最新价水平虚线（仅在蜡烛区）
                       Positioned(
                         top: _cl(closeY, 0, priceH),
@@ -248,6 +338,32 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
                                   fontWeight: FontWeight.bold)),
                         ),
                       ),
+                      // MA 图例（左上角）
+                      if (hasMa)
+                        Positioned(
+                          left: 4,
+                          top: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 2),
+                            color: Colors.black54,
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _MaLegend(
+                                    color: Color(0xFFFFC107), label: 'MA5'),
+                                SizedBox(width: 6),
+                                _MaLegend(
+                                    color: Color(0xFFFF9800), label: 'MA10'),
+                                SizedBox(width: 6),
+                                _MaLegend(
+                                    color: Color(0xFF26C6DA), label: 'MA20'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      // 底部时间轴
+                      ...timeLabels,
                     ],
                   ),
                 ),
@@ -275,6 +391,12 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
     );
   }
 
+  /// 安全取 MA 序列第 i 个值（越界/空序列返回 null）。
+  double? _maAt(List<double?>? ma, int i) {
+    if (ma == null || i < 0 || i >= ma.length) return null;
+    return ma[i];
+  }
+
   Widget _buildCandlestick(
     double maxX,
     List<CandlestickSpot> spots,
@@ -287,8 +409,8 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
     final n = widget.data.length;
     final count = endIdx - startIdx + 1;
 
-    // ② 反弹段半透明背景标记：把全量索引转成相对可见窗口的 X。
-    // - 三索引齐全（dropStart/dropEnd/recoveryEnd）：下跌段红 + 回补段绿。
+    // 反弹段半透明背景标记：全量索引 → 相对可见窗口 X。
+    // - 三索引齐全：下跌段紫 + 回补段绿（对比色，避免与红绿蜡烛撞色）。
     // - 仅 dropStart + recoveryEnd（dropEnd 缺失，如 backtest 持仓区间）：整段标绿。
     final ranges = <VerticalRangeAnnotation>[];
     void addRange(int? absA, int? absB, Color color) {
@@ -305,12 +427,12 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
     }
     if (widget.dropEndIndex != null) {
       addRange(widget.dropStartIndex, widget.dropEndIndex,
-          _upColor.withValues(alpha: 0.50));
+          _dropMarkColor.withValues(alpha: 0.35));
       addRange(widget.dropEndIndex, widget.recoveryEndIndex,
-          _downColor.withValues(alpha: 0.50));
+          _downColor.withValues(alpha: 0.35));
     } else {
       addRange(widget.dropStartIndex, widget.recoveryEndIndex,
-          _downColor.withValues(alpha: 0.50));
+          _downColor.withValues(alpha: 0.35));
     }
 
     return CandlestickChart(
@@ -349,6 +471,94 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
       ),
     );
   }
+}
+
+/// MA 均线图例（小色块 + 标签）。
+class _MaLegend extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _MaLegend({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 2,
+          color: color,
+        ),
+        const SizedBox(width: 2),
+        Text(label,
+            style: const TextStyle(color: Colors.grey, fontSize: 9)),
+      ],
+    );
+  }
+}
+
+/// MA 均线 painter：在蜡烛区叠加画 MA5/MA10/MA20 折线。
+///
+/// X = relIndex × step + step/2（与蜡烛中心对齐）；
+/// Y = 价格按 [yMin,yMax] 线性映射到 [0, priceH]（与蜡烛同坐标系）。
+class _MaPainter extends CustomPainter {
+  final double step;
+  final List<FlSpot> ma5;
+  final List<FlSpot> ma10;
+  final List<FlSpot> ma20;
+  final double yMin;
+  final double yMax;
+  final double priceH;
+
+  _MaPainter({
+    required this.step,
+    required this.ma5,
+    required this.ma10,
+    required this.ma20,
+    required this.yMin,
+    required this.yMax,
+    required this.priceH,
+  });
+
+  void _drawLine(Canvas canvas, List<FlSpot> pts, Color color) {
+    if (pts.length < 2) return; // 少于 2 点不画
+    final range = yMax - yMin;
+    if (range <= 0 || priceH <= 0) return;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    final path = Path();
+    for (var i = 0; i < pts.length; i++) {
+      final x = pts[i].x * step + step / 2;
+      final y = priceH * (yMax - pts[i].y) / range;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _drawLine(canvas, ma5, const Color(0xFFFFC107)); // MA5 黄
+    _drawLine(canvas, ma10, const Color(0xFFFF9800)); // MA10 橙
+    _drawLine(canvas, ma20, const Color(0xFF26C6DA)); // MA20 青
+  }
+
+  @override
+  bool shouldRepaint(covariant _MaPainter old) =>
+      old.ma5 != ma5 ||
+      old.ma10 != ma10 ||
+      old.ma20 != ma20 ||
+      old.yMin != yMin ||
+      old.yMax != yMax ||
+      old.priceH != priceH ||
+      old.step != step;
 }
 
 /// 水平虚线 painter（最新价标示）。

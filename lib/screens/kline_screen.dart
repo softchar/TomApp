@@ -268,11 +268,17 @@ class _KlineChartWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<KlineProvider, List<KlineDataWithIndicators>>(
-      selector: (context, provider) => provider.klineWithIndicators,
-      builder: (context, klineData, child) {
-        // FlChartKlineWidget 需要 List<KlineData>（不带指标）。
-        final klines = klineData.map((e) => e.data).toList();
+    return Selector<KlineProvider,
+        ({List<KlineDataWithIndicators> data, String interval})>(
+      selector: (context, provider) =>
+          (data: provider.klineWithIndicators, interval: provider.currentInterval),
+      builder: (context, s, child) {
+        // FlChartKlineWidget 需要 List<KlineData>（蜡烛）+ MA 序列（均线）。
+        final klines = s.data.map((e) => e.data).toList();
+        // 复用 provider 已算好的 MA5/MA10/MA20（避免重复计算）。
+        final ma5 = s.data.map((e) => e.ma5).toList();
+        final ma10 = s.data.map((e) => e.ma10).toList();
+        final ma20 = s.data.map((e) => e.ma20).toList();
         return SizedBox(
           height: MediaQuery.of(context).size.height * 0.25,
           child: Container(
@@ -287,6 +293,10 @@ class _KlineChartWidget extends StatelessWidget {
                       dropStartIndex: _msToIndex(highlightStartMs, klines),
                       dropEndIndex: _msToIndex(highlightDropEndMs, klines),
                       recoveryEndIndex: _msToIndex(highlightEndMs, klines),
+                      ma5: ma5,
+                      ma10: ma10,
+                      ma20: ma20,
+                      interval: s.interval,
                     ),
                   ),
           ),
