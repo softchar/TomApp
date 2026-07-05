@@ -4,6 +4,7 @@ import 'package:tomapp/providers/kline_provider.dart';
 import 'package:tomapp/providers/market_overview_provider.dart';
 import 'package:tomapp/services/long_short_provider.dart';
 import 'package:tomapp/widgets/interval_selector.dart';
+import 'package:tomapp/services/theme_provider.dart';
 import 'package:tomapp/widgets/flchart_kline_widget.dart';
 import 'package:tomapp/models/kline_data.dart';
 
@@ -52,11 +53,11 @@ class _KlineScreenState extends State<KlineScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('K线图'),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.onBackground,
         elevation: 0,
       ),
       body: Column(
@@ -101,7 +102,7 @@ class _IntervalSelectorWidget extends StatelessWidget {
       builder: (context, interval, child) {
         final provider = context.read<KlineProvider>();
         return Container(
-          color: Colors.black,
+          color: AppColors.background,
           child: IntervalSelector(
             currentInterval: interval,
             onIntervalChanged: provider.switchInterval,
@@ -127,18 +128,18 @@ class _TopSymbolsWidget extends StatelessWidget {
         }
 
         return Container(
-          color: Colors.black,
+          color: AppColors.background,
           height: 50,
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             itemCount: topSymbols.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 8),
+            separatorBuilder: (context, index) => const SizedBox(width: AppSpacing.sm),
             itemBuilder: (context, index) {
               final ticker = topSymbols[index];
               final symbol = ticker.symbol.replaceAll('USDT', '');
-              final isSelected = context.watch<KlineProvider>().symbol == ticker.symbol;
+              final isSelected = context.read<KlineProvider>().symbol == ticker.symbol;
 
               return _buildSymbolButton(
                 context: context,
@@ -166,12 +167,12 @@ class _TopSymbolsWidget extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue : Colors.grey[850],
+          color: isSelected ? AppColors.primary : AppColors.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? Colors.blue : Colors.grey[700]!,
+            color: isSelected ? AppColors.primary : AppColors.border,
           ),
         ),
         child: Column(
@@ -179,10 +180,9 @@ class _TopSymbolsWidget extends StatelessWidget {
           children: [
             Text(
               symbol,
-              style: TextStyle(
-                fontSize: 12,
+              style: AppTextStyles.labelMedium.copyWith(
                 fontWeight: FontWeight.bold,
-                color: isSelected ? Colors.white : Colors.grey[300],
+                color: isSelected ? AppColors.onBackground : AppColors.textSecondary,
               ),
             ),
           ],
@@ -211,26 +211,25 @@ class _PriceInfoWidget extends StatelessWidget {
 
         final change = data.change;
         final isPositive = change != null && change >= 0;
-        final color = isPositive ? Colors.red : Colors.green;
+        final color = isPositive ? AppColors.destructive : const Color(0xFF26a69a);
 
         return Container(
-          color: Colors.black,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: AppColors.background,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
           child: Row(
             children: [
               Text(
                 data.price.toStringAsFixed(2),
-                style: TextStyle(
-                  fontSize: 20,
+                style: AppTextStyles.headingSmall.copyWith(
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
               ),
               if (change != null) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.sm),
                 Text(
                   '${isPositive ? '+' : ''}${change.toStringAsFixed(2)}%',
-                  style: TextStyle(fontSize: 14, color: color),
+                  style: AppTextStyles.bodyMedium.copyWith(color: color),
                 ),
               ],
             ],
@@ -282,10 +281,10 @@ class _KlineChartWidget extends StatelessWidget {
         return SizedBox(
           height: MediaQuery.of(context).size.height * 0.25,
           child: Container(
-            color: Colors.black,
+            color: AppColors.background,
             child: klines.isEmpty
                 ? const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
+                    child: CircularProgressIndicator(color: AppColors.onBackground),
                   )
                 : RepaintBoundary(
                     child: FlChartKlineWidget(
@@ -323,28 +322,30 @@ class _LongShortRatioWidget extends StatelessWidget {
         final longAccount = currentRatio.longAccount * 100;
         final shortAccount = currentRatio.shortAccount * 100;
         final total = longAccount + shortAccount;
+        // 防止除零
+        final totalSafe = total > 0 ? total : 1.0;
+        final screenWidth = MediaQuery.of(context).size.width;
 
         return Container(
-          color: Colors.grey[900],
-          padding: const EdgeInsets.all(16),
+          color: AppColors.surface,
+          padding: const EdgeInsets.all(AppSpacing.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.bar_chart, size: 16, color: Colors.grey),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.bar_chart, size: 16, color: AppColors.textSecondary),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(
                     '5分钟多空比 - ${currentRatio.symbol.replaceAll('USDT', '')}',
-                    style: const TextStyle(
-                      fontSize: 14,
+                    style: AppTextStyles.bodyMedium.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: AppColors.onBackground,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.sm + 4),
               // 多空比条形图
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
@@ -352,28 +353,28 @@ class _LongShortRatioWidget extends StatelessWidget {
                   children: [
                     Container(
                       height: 24,
-                      width: longAccount / total * MediaQuery.of(context).size.width,
-                      color: Colors.red,
+                      width: longAccount / totalSafe * screenWidth,
+                      color: AppColors.destructive,
                     ),
                     Container(
                       height: 24,
-                      width: shortAccount / total * MediaQuery.of(context).size.width,
-                      color: Colors.green,
+                      width: shortAccount / totalSafe * screenWidth,
+                      color: const Color(0xFF26a69a),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     '做多 ${longAccount.toStringAsFixed(1)}%',
-                    style: const TextStyle(fontSize: 12, color: Colors.red),
+                    style: AppTextStyles.labelMedium.copyWith(color: AppColors.destructive),
                   ),
                   Text(
                     '做空 ${shortAccount.toStringAsFixed(1)}%',
-                    style: const TextStyle(fontSize: 12, color: Colors.green),
+                    style: AppTextStyles.labelMedium.copyWith(color: const Color(0xFF26a69a)),
                   ),
                 ],
               ),

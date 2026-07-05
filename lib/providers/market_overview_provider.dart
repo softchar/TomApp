@@ -259,10 +259,10 @@ class MarketOverviewProvider extends ChangeNotifier {
     }
   }
 
-  /// 开始自动刷新 (每2秒)
+  /// 开始自动刷新 (每30秒)
   void _startAutoRefresh() {
     fetchMarketOverview();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       fetchMarketOverview();
     });
   }

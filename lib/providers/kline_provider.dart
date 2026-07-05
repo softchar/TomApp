@@ -232,7 +232,18 @@ class KlineProvider extends ChangeNotifier {
 
   /// 启动实时更新
   void _startRealtime() {
-    _wsService.connect(_symbol, _currentInterval);
+    // 不阻塞加载流程，在后台启动 WS 连接
+    _wsService.connect(_symbol, _currentInterval).onError((error, stackTrace) {
+      if (kDebugMode) {
+        print('KlineProvider: WebSocket 连接失败 - $error');
+      }
+      // 如果连接失败，标记为非实时状态
+      if (_isRealtime) {
+        _isRealtime = false;
+        notifyListeners();
+      }
+    });
+    _wsSubscription?.cancel();
     _wsSubscription = _wsService.klineStream.listen(
       _onKlineUpdate,
       onError: (error) {
@@ -270,6 +281,9 @@ class KlineProvider extends ChangeNotifier {
 
     final lastIndex = _klineData.length - 1;
     final lastKline = _klineData[lastIndex];
+
+    // 保存更新前的收盘价，用于计算正确的涨跌幅
+    final prevClose = lastKline.close;
 
     if (kDebugMode) {
       print('[KlineProvider] 实时K线更新: ${_symbol} $_currentInterval '
@@ -317,8 +331,8 @@ class KlineProvider extends ChangeNotifier {
 
     // 更新当前价格和涨跌幅
     _currentPrice = data.close;
-    if (_klineData.length >= 2) {
-      final prevClose = _klineData[lastIndex].close;
+    // 使用之前保存的 prevClose（更新同一根K线时，_klineData[lastIndex] 已被改写）
+    if (_klineData.length >= 2 && prevClose != 0) {
       _priceChange = ((data.close - prevClose) / prevClose) * 100;
     }
 
@@ -335,6 +349,13 @@ class KlineProvider extends ChangeNotifier {
             time1.hour == time2.hour &&
             time1.minute == time2.minute;
 
+      case '5m':
+        return time1.year == time2.year &&
+            time1.month == time2.month &&
+            time1.day == time2.day &&
+            time1.hour == time2.hour &&
+            (time1.minute ~/ 5) == (time2.minute ~/ 5);
+
       case '15m':
         return time1.year == time2.year &&
             time1.month == time2.month &&
@@ -342,17 +363,42 @@ class KlineProvider extends ChangeNotifier {
             time1.hour == time2.hour &&
             (time1.minute ~/ 15) == (time2.minute ~/ 15);
 
+      case '30m':
+        return time1.year == time2.year &&
+            time1.month == time2.month &&
+            time1.day == time2.day &&
+            time1.hour == time2.hour &&
+            (time1.minute ~/ 30) == (time2.minute ~/ 30);
+
       case '1h':
         return time1.year == time2.year &&
             time1.month == time2.month &&
             time1.day == time2.day &&
             time1.hour == time2.hour;
 
+      case '2h':
+        return time1.year == time2.year &&
+            time1.month == time2.month &&
+            time1.day == time2.day &&
+            (time1.hour ~/ 2) == (time2.hour ~/ 2);
+
       case '4h':
         return time1.year == time2.year &&
             time1.month == time2.month &&
             time1.day == time2.day &&
             (time1.hour ~/ 4) == (time2.hour ~/ 4);
+
+      case '8h':
+        return time1.year == time2.year &&
+            time1.month == time2.month &&
+            time1.day == time2.day &&
+            (time1.hour ~/ 8) == (time2.hour ~/ 8);
+
+      case '12h':
+        return time1.year == time2.year &&
+            time1.month == time2.month &&
+            time1.day == time2.day &&
+            (time1.hour ~/ 12) == (time2.hour ~/ 12);
 
       case '1d':
         return time1.year == time2.year &&

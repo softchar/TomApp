@@ -38,11 +38,13 @@ class BinanceWebSocketManager extends ChangeNotifier {
   WebSocketConnectionState _connectionState = WebSocketConnectionState.disconnected;
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
+  bool _disposed = false;
 
   Stream<Ticker> get tickerStream => _tickerController.stream;
   WebSocketConnectionState get connectionState => _connectionState;
 
   void _setConnectionState(WebSocketConnectionState state) {
+    if (_disposed) return;
     if (_connectionState != state) {
       _connectionState = state;
       notifyListeners();
@@ -134,9 +136,12 @@ class BinanceWebSocketManager extends ChangeNotifier {
     return delay > maxDelay ? maxDelay : delay;
   }
 
+  @override
   void dispose() {
-    disconnect();
+    _disposed = true;
+    _reconnectTimer?.cancel();
     _streamSubscription?.cancel();
     _tickerController.close();
+    super.dispose();
   }
 }

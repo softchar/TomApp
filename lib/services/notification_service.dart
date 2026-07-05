@@ -116,13 +116,17 @@ class NotificationService {
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
 
-    await _notifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      '发现1小时资费合约！',
-      '${rate.symbol} 的资费间隔已变为1小时\n当前费率: ${rate.fundingRatePercent}',
-      platformChannelSpecifics,
-      payload: rate.symbol,
-    );
+    try {
+      await _notifications.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        '发现1小时资费合约！',
+        '${rate.symbol} 的资费间隔已变为1小时\n当前费率: ${rate.fundingRatePercent}',
+        platformChannelSpecifics,
+        payload: rate.symbol,
+      );
+    } catch (e) {
+      debugPrint('NotificationService._sendOneHourNotification 失败: $e');
+    }
   }
 
   /// 发送自定义通知
@@ -145,12 +149,16 @@ class NotificationService {
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
 
-    await _notifications.show(
-      id,
-      title,
-      body,
-      platformChannelSpecifics,
-    );
+    try {
+      await _notifications.show(
+        id,
+        title,
+        body,
+        platformChannelSpecifics,
+      );
+    } catch (e) {
+      debugPrint('NotificationService.show 失败: $e');
+    }
   }
 
   /// 发送测试通知
@@ -173,17 +181,25 @@ class NotificationService {
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
 
-    await _notifications.show(
-      0,
-      '通知测试',
-      '资费提醒功能正常工作',
-      platformChannelSpecifics,
-    );
+    try {
+      await _notifications.show(
+        0,
+        '通知测试',
+        '资费提醒功能正常工作',
+        platformChannelSpecifics,
+      );
+    } catch (e) {
+      debugPrint('NotificationService.sendTestNotification 失败: $e');
+    }
   }
 
   /// 清除所有通知
   Future<void> cancelAll() async {
-    await _notifications.cancelAll();
+    try {
+      await _notifications.cancelAll();
+    } catch (e) {
+      debugPrint('NotificationService.cancelAll 失败: $e');
+    }
   }
 
   /// 发送快速上涨通知
@@ -213,12 +229,16 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    await _notifications.show(
-      symbol.hashCode,
-      '🚀 $symbol 快速上涨',
-      '+${priceChange.toStringAsFixed(2)}% • 当前价格 \$${currentPrice.toStringAsFixed(2)}',
-      details,
-      payload: symbol,
-    );
+    try {
+      await _notifications.show(
+        symbol.hashCode,
+        '🚀 $symbol 快速上涨',
+        '+${priceChange.toStringAsFixed(2)}% • 当前价格 \$${currentPrice.toStringAsFixed(2)}',
+        details,
+        payload: symbol,
+      );
+    } catch (e) {
+      debugPrint('NotificationService.showPumpNotification 失败: $e');
+    }
   }
 }

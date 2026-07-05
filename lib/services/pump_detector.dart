@@ -14,7 +14,6 @@ class PricePoint {
 
 class PumpDetector {
   final PumpConfig _config;
-  final PumpRepository _repository;
   final List<PumpDetectionStrategy> _strategies;
 
   // 存储每个合约的价格历史 (最多保留 2 分钟的数据)
@@ -27,7 +26,6 @@ class PumpDetector {
     PumpConfig? config,
     required PumpRepository repository,
   })  : _config = config ?? PumpConfig(),
-        _repository = repository,
         _strategies = [
           TimeBasedStrategy(),
           AdaptiveStrategy(repository),
@@ -155,9 +153,9 @@ class PumpDetector {
     _priceHistory[symbol]!.removeWhere((p) => p.timestamp.isBefore(cutoff));
   }
 
-  void _cleanupInactiveSymbols() {
+  void _cleanupInactiveSymbols([DateTime? now]) {
     // 清理超过 5 分钟没有更新的币种数据
-    final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
+    final cutoff = (now ?? DateTime.now()).subtract(const Duration(minutes: 5));
     _priceHistory.removeWhere((symbol, points) {
       if (points.isEmpty) return true;
       return points.last.timestamp.isBefore(cutoff);

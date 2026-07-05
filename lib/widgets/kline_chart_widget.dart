@@ -202,6 +202,11 @@ class _HighlightPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _HighlightPainter oldDelegate) {
     return startMs != oldDelegate.startMs ||
-        endMs != oldDelegate.endMs;
+        endMs != oldDelegate.endMs ||
+        klineData.length != oldDelegate.klineData.length ||
+        (klineData.isNotEmpty &&
+            oldDelegate.klineData.isNotEmpty &&
+            klineData[0].time.millisecondsSinceEpoch !=
+                oldDelegate.klineData[0].time.millisecondsSinceEpoch);
   }
 }

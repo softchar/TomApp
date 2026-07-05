@@ -47,6 +47,14 @@ class AlertThrottler {
     required int highThreshold,
     required int medThreshold,
   }) {
+    // Step 0: 跨日重置——必须在所有闸门前执行，确保计数器在日期变更时立即归零
+    // （Pitfall 2: 在 evaluate 入口执行，per RESEARCH.md）
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    if (today != _todayDate) {
+      _todayDate = today;
+      _todayCount = 0;
+    }
+
     // Step 1: 分级判定
     final level = _classify(
       signal.score,
@@ -66,14 +74,7 @@ class AlertThrottler {
       if (hoursSince < cooldownHours) return null;
     }
 
-    // Step 4: 跨日重置（Pitfall 2: 在 evaluate 入口执行）
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-    if (today != _todayDate) {
-      _todayDate = today;
-      _todayCount = 0;
-    }
-
-    // Step 5: 日上限
+    // Step 4: 日上限（跨日重置已在 Step 0 入口执行）
     if (_todayCount >= dailyLimit) return null;
 
     // 归并逻辑架构预留 (Pitfall 5):

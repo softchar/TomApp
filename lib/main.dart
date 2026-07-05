@@ -146,7 +146,7 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
   final pumpDetector = _PumpDetector(threshold: pumpConfig.baseThreshold);
   debugPrint('🔧 callbackDispatcher: PumpDetector 已创建，阈值: ${pumpConfig.baseThreshold}%');
 
-  Timer.periodic(const Duration(seconds: 2), (timer) async {
+  Timer.periodic(const Duration(seconds: 5), (timer) async {
     debugPrint('🔧 callbackDispatcher: 定时器触发 #${timer.tick}');
 
     // 只在第一次更新通知，之后不再更新以避免通知重复弹出
@@ -157,8 +157,8 @@ Future<void> callbackDispatcher(ServiceInstance service) async {
       );
     }
 
-    // 每 5 个周期（约 2.5 分钟）执行一次回撤分析
-    if (timer.tick % 5 == 0) {
+    // 每 12 个周期（约 1 分钟）执行一次回撤分析
+    if (timer.tick % 12 == 0) {
       try {
         final analytics = PumpAnalyticsService(
           repository: RepositoryFactory.create(),

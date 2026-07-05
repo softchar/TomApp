@@ -38,15 +38,12 @@ class ReboundAlertService {
   /// watchlist churn 定时器（每小时刷新 exchangeInfo）
   Timer? _watchlistTimer;
 
-  /// 5 秒重评估定时器：对 tracked symbol 用最新 window 重新检测。
+  /// 20 秒重评估定时器：对 tracked symbol 用最新 window 重新检测。
   Timer? _reEvalTimer;
-  static const Duration _reEvalInterval = Duration(seconds: 5);
+  static const Duration _reEvalInterval = Duration(seconds: 20);
 
   /// 当前已订阅的 symbols
   final Set<String> _subscribedSymbols = {};
-
-  /// 已知的全部合约（从 exchangeInfo 获取）
-  Set<String>? _knownSymbols;
 
   /// warm-up 中的标的（由 handleClosedKline 更新，传给 provider）
   final Set<String> _warmingSymbols = {};
@@ -372,15 +369,14 @@ class ReboundAlertService {
         _streamService.warmUp(sym, monitoredTimeframes);
       }
     }
-
-    _knownSymbols = currentSymbols;
   }
 
   /// watchlist churn 定时回调（内部，per D-09）。
+  ///
+  /// 默认空操作——实际 watchlist 刷新由上层（main.dart / ExchangeInfoService
+  /// 回调）调用 [updateSymbolList] 驱动。定时器保留以支持未来自动刷新。
   void _refreshWatchlist() {
-    if (_knownSymbols != null) {
-      // 使用上次已知的 symbol 列表（由 main.dart 的 exchangeInfoService 提供更新）
-      // 实际更新由上层调用 updateSymbolList()
-    }
+    // 预定扩展点：可在此定期查询 exchangeInfo 并调用 updateSymbolList()
+    // 当前由上层手动触发 updateSymbolList
   }
 }

@@ -17,8 +17,8 @@ class _FundingIntervalInfo {
 
   factory _FundingIntervalInfo.fromJson(Map<String, dynamic> json) {
     return _FundingIntervalInfo(
-      symbol: json['symbol'] ?? '',
-      fundingIntervalHours: json['fundingIntervalHours'] ?? 8,
+      symbol: (json['symbol'] as String?) ?? '',
+      fundingIntervalHours: (json['fundingIntervalHours'] as int?) ?? 8,
     );
   }
 }

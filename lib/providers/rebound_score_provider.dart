@@ -6,7 +6,7 @@ import 'package:tomapp/services/rebound/rebound_signal_repository.dart';
 /// 反弹信号评分 Provider（ChangeNotifier）。
 ///
 /// 由 [ReboundAlertService] 更新，UI（Phase 4 ReboundDashboardScreen）消费。
-/// 暴露 per-(symbol, timeframe) 的只读信号状态，按评分降序。
+/// 暴露 per-(symbol, timeframe) 的只读信号状态，按时间降序（最新在上）。
 class ReboundScoreProvider extends ChangeNotifier {
   /// 列表信号仓库（可选；注入后低频路径写库 + 启动恢复）。
   ReboundSignalRepositoryInterface? _signalRepo;
@@ -39,7 +39,11 @@ class ReboundScoreProvider extends ChangeNotifier {
   ReboundSignal? getSignal(String symbol, String tf) =>
       _signalsBySymbol[symbol]?[tf];
 
-  /// 按周期过滤信号，按 score 降序返回。
+  /// 按周期过滤信号，按时间降序返回（最新在上）；同收盘时间按 score 降序兜底。
+  ///
+  /// 主排序用 [ReboundSignal.timestamp]（确认 K 线收盘时间，非 DateTime.now），
+  /// 故刷新重检测时新 signal 带新收盘时间会自然上浮。同根 K 线收盘多币触发时，
+  /// 高分靠前（score 降序兜底）。
   ///
   /// [minScore]：仅返回评分 ≥ 此值的信号（默认 0 不过滤，向后兼容）。
   List<ReboundSignal> getSignalsForTimeframe(String tf, {int minScore = 0}) {
@@ -48,7 +52,13 @@ class ReboundScoreProvider extends ChangeNotifier {
       final signal = tfMap[tf];
       if (signal != null && signal.score >= minScore) result.add(signal);
     }
-    result.sort((a, b) => b.score.compareTo(a.score));
+    result.sort((a, b) {
+      // 主排序：触发时间降序（最新在上）。
+      final byTime = b.timestamp.compareTo(a.timestamp);
+      if (byTime != 0) return byTime;
+      // 同收盘时间按 score 降序兜底。
+      return b.score.compareTo(a.score);
+    });
     return result;
   }
 

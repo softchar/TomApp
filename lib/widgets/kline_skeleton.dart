@@ -25,12 +25,12 @@ class KlineSkeleton extends StatelessWidget {
         // Chart area skeleton
         Expanded(
           child: Shimmer.fromColors(
-            baseColor: Colors.grey[300]!,
-            highlightColor: Colors.grey[100]!,
+            baseColor: Colors.grey[800]!,
+            highlightColor: Colors.grey[600]!,
             child: Container(
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Colors.grey[900],
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -41,7 +41,7 @@ class KlineSkeleton extends StatelessWidget {
                     child: Container(
                       margin: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.grey[200],
+                        color: Colors.grey[850],
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
@@ -52,7 +52,7 @@ class KlineSkeleton extends StatelessWidget {
                     child: Container(
                       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       decoration: BoxDecoration(
-                        color: Colors.grey[200],
+                        color: Colors.grey[850],
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),

@@ -16,6 +16,7 @@ class KlineWebSocketService extends ChangeNotifier {
       WebSocketConnectionState.disconnected;
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
+  bool _disposed = false;
 
   /// 保存当前连接参数用于重连
   String? _currentSymbol;
@@ -25,6 +26,7 @@ class KlineWebSocketService extends ChangeNotifier {
   WebSocketConnectionState get connectionState => _connectionState;
 
   void _setConnectionState(WebSocketConnectionState state) {
+    if (_disposed) return;
     if (_connectionState != state) {
       _connectionState = state;
       notifyListeners();
@@ -150,7 +152,9 @@ class KlineWebSocketService extends ChangeNotifier {
 
   @override
   void dispose() {
-    disconnect();
+    _disposed = true;
+    _reconnectTimer?.cancel();
+    _subscription?.cancel();
     _klineController.close();
     super.dispose();
   }

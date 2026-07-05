@@ -6,7 +6,8 @@ import 'package:tomapp/services/rebound/rebound_signal_repository.dart';
 
 /// Phase 3 / D-05/D-11：ReboundScoreProvider ChangeNotifier 测试。
 
-ReboundSignal _signal(String symbol, String tf, {int score = 80}) {
+ReboundSignal _signal(String symbol, String tf,
+    {int score = 80, DateTime? timestamp}) {
   return ReboundSignal(
     symbol: symbol,
     timeframe: tf,
@@ -22,7 +23,7 @@ ReboundSignal _signal(String symbol, String tf, {int score = 80}) {
     dropStartIndex: 10,
     dropEndIndex: 12,
     recoveryEndIndex: 14,
-    timestamp: DateTime(2024),
+    timestamp: timestamp ?? DateTime(2024),
   );
 }
 
@@ -66,7 +67,24 @@ void main() {
       expect(notifyCount, 1, reason: '批量更新仅触发一次通知');
     });
 
-    test('getSignalsForTimeframe 按 score 降序', () {
+    test('getSignalsForTimeframe 按时间降序（最新在上），时间戳优先于 score', () {
+      provider.upsert('OLD', '1h',
+          _signal('OLD', '1h', score: 90, timestamp: DateTime(2024, 1, 1, 9)));
+      provider.upsert('MID', '1h',
+          _signal('MID', '1h', score: 60, timestamp: DateTime(2024, 1, 1, 10)));
+      provider.upsert('NEW', '1h',
+          _signal('NEW', '1h', score: 75, timestamp: DateTime(2024, 1, 1, 11)));
+      provider.upsert('D', '4h',
+          _signal('D', '4h', score: 99, timestamp: DateTime(2024, 1, 1, 12)));
+      final result = provider.getSignalsForTimeframe('1h');
+      expect(result.length, 3);
+      expect(result[0].symbol, 'NEW', reason: '最新时间戳在最前，即使 score 不是最高');
+      expect(result[1].symbol, 'MID');
+      expect(result[2].symbol, 'OLD', reason: '最早时间戳在最后，即使 score 最高');
+    });
+
+    test('getSignalsForTimeframe 同收盘时间按 score 降序兜底', () {
+      // 同时间戳（默认 DateTime(2024)）→ 走 score 兜底排序。
       provider.upsert('A', '1h', _signal('A', '1h', score: 60));
       provider.upsert('B', '1h', _signal('B', '1h', score: 90));
       provider.upsert('C', '1h', _signal('C', '1h', score: 75));
@@ -78,7 +96,7 @@ void main() {
       expect(result[2].score, 60);
     });
 
-    test('getSignalsForTimeframe minScore 过滤：仅返回 ≥ minScore（降序）', () {
+    test('getSignalsForTimeframe minScore 过滤：仅返回 ≥ minScore', () {
       provider.upsert('A', '1h', _signal('A', '1h', score: 60));
       provider.upsert('B', '1h', _signal('B', '1h', score: 90));
       provider.upsert('C', '1h', _signal('C', '1h', score: 70));

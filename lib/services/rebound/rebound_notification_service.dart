@@ -76,13 +76,15 @@ class ReboundNotificationService {
 
     // 初始化 plugin（设置通知点击回调）
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidInit);
+    const iosInit = DarwinInitializationSettings();
+    const initSettings =
+        InitializationSettings(android: androidInit, iOS: iosInit);
 
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse details) {
         if (kDebugMode) {
-          print('反弹通知点击: ${details.payload}');
+          debugPrint('反弹通知点击: ${details.payload}');
         }
         final payload = details.payload;
         if (payload != null && payload.isNotEmpty) {

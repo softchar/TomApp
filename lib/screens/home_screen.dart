@@ -304,7 +304,6 @@ class _GainerListTileState extends State<_GainerListTile> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final theme = Theme.of(context);
 
     return InkWell(

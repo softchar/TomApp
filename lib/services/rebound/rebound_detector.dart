@@ -229,8 +229,12 @@ class ReboundDetector {
 
     // 支撑位（per DETECT-03）：swing low 附近（±2%）有前期支撑
     if (params.confluenceSupportLevel) {
-      final priorLow =
-          _ti.swingLow(window.sublist(0, startIdx), lookback: params.swingLookback);
+      // startIdx 为 0 时前置窗口为空，无条件产生支撑位共振
+      int? priorLow;
+      if (startIdx > 0) {
+        priorLow = _ti.swingLow(
+            window.sublist(0, startIdx), lookback: params.swingLookback);
+      }
       if (priorLow != null) {
         final priorLowPrice = window[priorLow].low;
         final currentLowPrice = window[lowIdx].low;

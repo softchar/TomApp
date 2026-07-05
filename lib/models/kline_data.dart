@@ -18,8 +18,13 @@ class KlineData {
 
   /// 从币安API响应创建
   factory KlineData.fromBinanceResponse(List<dynamic> response) {
+    if (response.length < 6) {
+      throw ArgumentError('Binance K线响应至少需要6个元素，实际: ${response.length}');
+    }
+    // time 可能是 int 或 double（大毫秒时间戳），安全转换
+    final timeMs = (response[0] as num).toInt();
     return KlineData(
-      time: DateTime.fromMillisecondsSinceEpoch(response[0] as int),
+      time: DateTime.fromMillisecondsSinceEpoch(timeMs),
       open: double.parse(response[1].toString()),
       high: double.parse(response[2].toString()),
       low: double.parse(response[3].toString()),
@@ -43,7 +48,7 @@ class KlineData {
   /// 从Map创建
   factory KlineData.fromMap(Map<String, dynamic> map) {
     return KlineData(
-      time: DateTime.fromMillisecondsSinceEpoch(map['time'] as int),
+      time: DateTime.fromMillisecondsSinceEpoch((map['time'] as num).toInt()),
       open: (map['open'] as num).toDouble(),
       high: (map['high'] as num).toDouble(),
       low: (map['low'] as num).toDouble(),

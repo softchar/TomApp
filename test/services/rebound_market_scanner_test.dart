@@ -112,8 +112,8 @@ void main() {
   });
 
   group('ReboundMarketScanner', () {
-    // Test 1 [限流预算]: 默认 monitoredTimeframes → 400 标的 × 15m = 400 请求
-    test('限流预算（默认 15m）：所有请求 limit==99、interval==15m，总数 == 400', () async {
+    // Test 1 [限流预算]: 默认 monitoredTimeframes → 400 标的 × 4 TF = 1600 请求
+    test('限流预算（默认多周期 15m/1h/4h/1d）：所有请求 limit==99，总数 == 1600', () async {
       final symbols = List.generate(400, (i) => 'SYM${i}USDT');
       fetcher.fixtures = {for (final s in symbols) s: _flatKlinesRaw(99)};
 
@@ -125,21 +125,26 @@ void main() {
         batchSize: 8,
         batchDelay: const Duration(milliseconds: 1),
         klineLimit: 99,
-        // 不传 timeframes → 用默认 monitoredTimeframes（['15m']，per 04-03 决策 D8）
+        // 不传 timeframes → 用默认 monitoredTimeframes（['15m','1h','4h','1d']）
       );
 
       final result = await scanner.scanOnce();
 
-      expect(fetcher.calls.length, 400,
-          reason: '400 标的 × 15m 单周期 = 400 请求');
+      expect(fetcher.calls.length, 1600,
+          reason: '400 标的 × 4 TF = 1600 请求');
       for (final c in fetcher.calls) {
         expect(c.limit, 99, reason: '所有请求 limit 必须 == 99 (weight=1)');
-        expect(c.interval, '15m', reason: '默认 monitoredTimeframes 仅 15m');
       }
+      // 验证四种周期都出现
+      final intervals = fetcher.calls.map((c) => c.interval).toSet();
+      expect(intervals, contains('15m'));
+      expect(intervals, contains('1h'));
+      expect(intervals, contains('4h'));
+      expect(intervals, contains('1d'));
       expect(result.hitSymbols, isEmpty, reason: '平盘 fixture 不应命中');
     });
 
-    // Test 1b [参数化回归]: 构造器传 4 TF → 1600 请求（验证多周期能力保留，per D8）
+    // Test 2 [参数化回归]: 构造器传 4 TF → 1600 请求（验证多周期能力保留，per D8）
     test('参数化回归：构造器传 4 TF → 1600 请求（多周期能力保留）', () async {
       final symbols = List.generate(400, (i) => 'SYM${i}USDT');
       fetcher.fixtures = {for (final s in symbols) s: _flatKlinesRaw(99)};

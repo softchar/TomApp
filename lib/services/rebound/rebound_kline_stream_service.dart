@@ -170,14 +170,19 @@ class ReboundKlineStreamService {
         ? monitoredTimeframes
         : _subscribedTimeframes;
     for (final sym in fresh) {
-      // 找一个容量未满的 connection（或新建一个）
+      // 找一个容量未满的 connection（或新建一个空占位 connection）
       _ShardConnection conn = _ensureCapacity(tfs.length);
       final newStreams = <String>[];
+      final wasEmpty = conn.streams.isEmpty; // 新建的占位连接，需首次开 WS
       for (final tf in tfs) {
         final streamName = '${sym.toLowerCase()}@kline_$tf';
         newStreams.add(streamName);
         conn.streams.add(streamName);
         _streamToConn[streamName] = conn;
+      }
+      // 新建的空连接：首次建立 WS（有真实 stream 后才开，防 StateError）
+      if (wasEmpty) {
+        _openConnection(conn);
       }
       _subscribedSymbols.add(sym);
       // 发实时 SUBSCRIBE JSON（复用 _openConnection L140-144 的消息格式）
@@ -228,14 +233,11 @@ class ReboundKlineStreamService {
         return conn;
       }
     }
-    // 新建空 connection 占位（_openConnection 需至少 1 个 stream 才能建 URI；
-    // 这里插入一个占位 stream，避免 URI 解析失败；实际 SUBSCRIBE 后由 sink 追加）
-    final placeholder = _ShardConnection(<String>['__placeholder__@noop']);
+    // 新建空 connection 占位（不设初始 stream；首次 SUBSCRIBE JSON 由调用方追加，
+    // 连接会在调用方追加真实 stream 后由后续路径触发建立——避免 _openConnection
+    // 在 streams 为空时抛出 StateError，per CR-01）
+    final placeholder = _ShardConnection(<String>[]);
     _connections.add(placeholder);
-    // 异步建立连接（不 await，subscribe 调用方不阻塞）
-    _openConnection(placeholder);
-    // 占位 stream 立即移除（真实 stream 由调用方追加）
-    placeholder.streams.clear();
     return placeholder;
   }
 
@@ -402,9 +404,6 @@ class ReboundKlineStreamService {
 
   void _onConnectionDone(_ShardConnection conn) {
     _connections.remove(conn);
-    if (_connections.isEmpty) {
-      // 所有连接断开
-    }
     _scheduleReconnect(conn);
   }
 

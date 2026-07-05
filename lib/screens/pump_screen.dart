@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:tomapp/providers/pump_list_provider.dart';
 import 'package:tomapp/services/theme_provider.dart';
 import 'package:tomapp/services/binance_websocket_manager.dart';
-import 'package:tomapp/services/favorite_service.dart';
 import 'package:tomapp/widgets/pump_history_item.dart';
 import 'package:tomapp/screens/pump_detail_screen.dart';
 import 'package:tomapp/services/theme_provider.dart' show AppColors, AppSpacing, AppRadius;
@@ -33,18 +32,19 @@ class _PumpScreenState extends State<PumpScreen> {
     _scrollController.addListener(_onScroll);
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
   void _onScroll() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       context.read<PumpListProvider>().loadMore();
     }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override

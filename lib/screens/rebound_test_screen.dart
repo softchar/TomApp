@@ -5,6 +5,7 @@ import 'package:tomapp/services/rebound/rebound_detector.dart';
 import 'package:tomapp/services/technical_indicators.dart';
 import 'package:tomapp/services/test/test_data_generator.dart';
 import 'package:tomapp/services/test/test_orchestrator.dart';
+import 'package:tomapp/services/theme_provider.dart';
 import 'package:tomapp/widgets/flchart_kline_widget.dart';
 import 'package:tomapp/models/alert_level.dart';
 import 'package:tomapp/services/rebound/rebound_notification_service.dart';
@@ -134,16 +135,16 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('反弹检测测试'),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.onBackground,
         actions: [
           IconButton(
             icon: Icon(
               _showDebugPanel ? Icons.bug_report : Icons.bug_report_outlined,
-              color: _showDebugPanel ? Colors.yellow : Colors.white,
+              color: _showDebugPanel ? AppColors.warning : AppColors.onBackground,
             ),
             onPressed: () => setState(() => _showDebugPanel = !_showDebugPanel),
             tooltip: '调试面板',
@@ -154,11 +155,11 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
         children: [
           _buildControlBar(),
           if (_orchestrator.window.isEmpty)
-            const Expanded(
+            Expanded(
               child: Center(
                 child: Text(
                   '点击开始按钮启动测试',
-                  style: TextStyle(color: Colors.grey),
+                  style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
                 ),
               ),
             )
@@ -175,8 +176,8 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
   /// 控制栏：第一行播放/暂停+模式+刷新，第二行参数 Slider。
   Widget _buildControlBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      color: Colors.grey[900],
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
+      color: AppColors.surface,
       child: Column(
         children: [
           // 第一行：播放/暂停、模式切换、刷新
@@ -185,7 +186,7 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
               IconButton(
                 icon: Icon(
                   _orchestrator.isRunning ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
+                  color: AppColors.onBackground,
                 ),
                 onPressed: () {
                   if (_orchestrator.isRunning) {
@@ -195,11 +196,11 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
                   }
                 },
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.sm),
               DropdownButton<SimulationMode>(
                 value: _currentMode,
-                dropdownColor: Colors.grey[850],
-                style: const TextStyle(color: Colors.white, fontSize: 13),
+                dropdownColor: AppColors.surfaceVariant,
+                style: AppTextStyles.bodyMedium.copyWith(color: AppColors.onBackground),
                 underline: const SizedBox(),
                 items: const [
                   DropdownMenuItem(
@@ -229,12 +230,12 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.notifications_active,
-                    color: Colors.yellow),
+                    color: AppColors.warning),
                 onPressed: _testNotify,
                 tooltip: '测试通知',
               ),
               IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white),
+                icon: const Icon(Icons.refresh, color: AppColors.onBackground),
                 onPressed: () => _orchestrator.reset(),
               ),
             ],
@@ -344,15 +345,15 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
         children: [
           Text(
             '$label ${value.toStringAsFixed(1)}',
-            style: const TextStyle(color: Colors.grey, fontSize: 10),
+            style: AppTextStyles.bodySmall,
           ),
           Slider(
             value: value,
             min: min,
             max: max,
             divisions: divisions,
-            activeColor: Colors.blue,
-            inactiveColor: Colors.grey[800],
+            activeColor: AppColors.info,
+            inactiveColor: AppColors.surfaceVariant,
             onChanged: onChanged,
           ),
         ],
@@ -372,15 +373,15 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
         children: [
           Text(
             '$label $value',
-            style: const TextStyle(color: Colors.grey, fontSize: 10),
+            style: AppTextStyles.bodySmall,
           ),
           Slider(
             value: value.toDouble(),
             min: min.toDouble(),
             max: max.toDouble(),
             divisions: max - min,
-            activeColor: Colors.orange,
-            inactiveColor: Colors.grey[800],
+            activeColor: AppColors.warning,
+            inactiveColor: AppColors.surfaceVariant,
             onChanged: (v) => onChanged(v.round()),
           ),
         ],
@@ -402,7 +403,7 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
     if (recoveryEnd != null && recoveryEnd < 0) recoveryEnd = null;
 
     return Padding(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(AppSpacing.xs),
       child: Stack(
         children: [
           FlChartKlineWidget(
@@ -421,10 +422,10 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
     final signals = _orchestrator.signals;
 
     if (signals.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           '暂无高评分信号',
-          style: TextStyle(color: Colors.grey),
+          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
         ),
       );
     }
@@ -446,22 +447,22 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
       },
       child: Card(
         // 整体更亮、更显眼：非选中用蓝灰亮底 + 青色描边；选中蓝色高亮。
-        color: isSelected ? Colors.blue.withAlpha(70) : Colors.blueGrey[800],
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        color: isSelected ? AppColors.info.withAlpha(70) : AppColors.surface,
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
         shape: RoundedRectangleBorder(
           side: BorderSide(
-            color: isSelected ? Colors.cyan : Colors.cyan.withAlpha(90),
+            color: isSelected ? AppColors.primary : AppColors.primary.withAlpha(90),
             width: isSelected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: AppSpacing.sm),
           child: Row(
             children: [
               // 评分徽章
               _ScoreBadge(score: signal.score),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.sm),
               // 信号详情
               Expanded(
                 child: Column(
@@ -471,18 +472,18 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
                       Text(
                         '${signal.dropMagnitude.toStringAsFixed(1)}×ATR',
                         style:
-                            TextStyle(color: Colors.red[300], fontSize: 12),
+                            AppTextStyles.bodySmall.copyWith(color: AppColors.destructive),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Text(
                         '回补 ${(signal.recoveryRatio * 100).toStringAsFixed(0)}%',
                         style:
-                            TextStyle(color: Colors.green[300], fontSize: 12),
+                            AppTextStyles.bodySmall.copyWith(color: AppColors.success),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       _DeadCatIndicator(score: signal.deadCatRiskScore),
                     ]),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: AppSpacing.xs),
                     // 共振过滤器标签
                     Wrap(
                       spacing: 4,
@@ -491,14 +492,14 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
                           Chip(
                             label: Text(
                               _confluenceLabel(f),
-                              style: const TextStyle(fontSize: 10),
+                              style: AppTextStyles.bodySmall,
                             ),
-                            backgroundColor: Colors.blueGrey[800],
+                            backgroundColor: AppColors.surface,
                             materialTapTargetSize:
                                 MaterialTapTargetSize.shrinkWrap,
                             padding: EdgeInsets.zero,
                             labelPadding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 0),
+                                horizontal: AppSpacing.xs, vertical: 0),
                           ),
                       ],
                     ),
@@ -510,10 +511,10 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
                 children: [
                   Text(
                     '${signal.timestamp.hour}:${signal.timestamp.minute.toString().padLeft(2, '0')}:${signal.timestamp.second.toString().padLeft(2, '0')}',
-                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                    style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
                   ),
                   if (isSelected)
-                    const Icon(Icons.check_circle, color: Colors.blue, size: 16),
+                    const Icon(Icons.check_circle, color: AppColors.success, size: 16),
                 ],
               ),
             ],
@@ -573,20 +574,19 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
         : null;
 
     return Container(
-      padding: const EdgeInsets.all(12),
-      color: Colors.grey[900],
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      color: AppColors.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '🔧 调试信息',
-            style: TextStyle(
-              color: Colors.yellow,
-              fontSize: 14,
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: AppColors.warning,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           // 指标行
           Wrap(
             spacing: 16,
@@ -595,43 +595,43 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
               _DebugItem(
                 label: 'ATR(${_params.atrPeriod})',
                 value: currentAtr != null ? currentAtr.toStringAsFixed(4) : '--',
-                color: Colors.cyan,
+                color: AppColors.success,
               ),
               _DebugItem(
                 label: 'RSI(${_params.rsiPeriod})',
                 value: stdRsi != null ? stdRsi.toStringAsFixed(1) : '--',
                 color: stdRsi != null && stdRsi < _params.rsiOversold
-                    ? Colors.red
-                    : Colors.cyan,
+                    ? AppColors.destructive
+                    : AppColors.success,
               ),
               _DebugItem(
                 label: 'RSI(${_params.fastRsiPeriod})',
                 value: fastRsi != null ? fastRsi.toStringAsFixed(1) : '--',
                 color: fastRsi != null && fastRsi < _params.rsiOversold
-                    ? Colors.red
-                    : Colors.cyan,
+                    ? AppColors.destructive
+                    : AppColors.success,
               ),
               _DebugItem(
                 label: 'swingLow',
                 value: swingLowIdx != null
                     ? '#$swingLowIdx ${swingLowPrice?.toStringAsFixed(2)}'
                     : '--',
-                color: Colors.orange,
+                color: AppColors.warning,
               ),
               _DebugItem(
                 label: '窗口',
                 value: '${window.length}/${TestOrchestrator.windowSize}',
-                color: Colors.grey,
+                color: AppColors.textSecondary,
               ),
             ],
           ),
           if (latestSignal != null) ...[
-            const Divider(color: Colors.grey, height: 16),
-            const Text(
+            const Divider(color: AppColors.divider, height: AppSpacing.md),
+            Text(
               '最新信号共振过滤器',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+              style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Wrap(
               spacing: 8,
               runSpacing: 4,
@@ -640,20 +640,19 @@ class _ReboundTestScreenState extends State<ReboundTestScreen> {
                 return Chip(
                   label: Text(
                     _confluenceLabel(type),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: passed ? Colors.white : Colors.grey,
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: passed ? AppColors.textPrimary : AppColors.textSecondary,
                     ),
                   ),
-                  backgroundColor: passed ? Colors.green[700] : Colors.grey[800],
+                  backgroundColor: passed ? AppColors.success : AppColors.surfaceVariant,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   padding: EdgeInsets.zero,
                   labelPadding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 0),
                   avatar: Icon(
                     passed ? Icons.check : Icons.close,
                     size: 14,
-                    color: passed ? Colors.white : Colors.grey,
+                    color: passed ? AppColors.onBackground : AppColors.textSecondary,
                   ),
                 );
               }).toList(),
@@ -680,9 +679,9 @@ class _DebugItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
-        color: Colors.black54,
+        color: Colors.black.withAlpha(138),
         borderRadius: BorderRadius.circular(4),
       ),
       child: RichText(
@@ -690,13 +689,12 @@ class _DebugItem extends StatelessWidget {
           children: [
             TextSpan(
               text: '$label: ',
-              style: const TextStyle(color: Colors.grey, fontSize: 11),
+              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
             ),
             TextSpan(
               text: value,
-              style: TextStyle(
+              style: AppTextStyles.labelSmall.copyWith(
                 color: color,
-                fontSize: 11,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -716,7 +714,7 @@ class _ScoreBadge extends StatelessWidget {
   Color get _bgColor {
     if (score >= 70) return const Color(0xFF2E7D32); // 深绿
     if (score >= 40) return const Color(0xFFF57F17); // 黄/橙
-    return Colors.grey[700]!;
+    return AppColors.textDisabled;
   }
 
   @override
@@ -731,9 +729,8 @@ class _ScoreBadge extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         '$score',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
+        style: AppTextStyles.labelMedium.copyWith(
+          color: AppColors.textPrimary,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -754,7 +751,7 @@ class _DeadCatIndicator extends StatelessWidget {
         width: 32,
         child: Tooltip(
           message: '死猫反弹高风险',
-          child: Icon(Icons.dangerous, color: Colors.red, size: 18),
+          child: Icon(Icons.dangerous, color: AppColors.destructive, size: 18),
         ),
       );
     }
@@ -764,14 +761,14 @@ class _DeadCatIndicator extends StatelessWidget {
         child: Tooltip(
           message: '注意死猫风险',
           child:
-              Icon(Icons.warning_amber, color: Colors.orange, size: 18),
+              Icon(Icons.warning_amber, color: AppColors.warning, size: 18),
         ),
       );
     }
     return const SizedBox(
       width: 32,
       child: Icon(Icons.check_circle_outline,
-          color: Colors.green, size: 18),
+          color: AppColors.success, size: 18),
     );
   }
 }

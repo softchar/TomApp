@@ -148,7 +148,7 @@ class ThemeProvider with ChangeNotifier {
   Future<void> _loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
     final themeModeIndex = prefs.getInt(_themeKey) ?? 0; // 默认暗色模式
-    _themeMode = ThemeMode.values[themeModeIndex];
+    _themeMode = ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
     notifyListeners();
   }
 

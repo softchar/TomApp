@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'database_helper.dart';
@@ -52,6 +53,7 @@ class KlineCacheService {
       return decoded.map((item) => KlineData.fromMap(item as Map<String, dynamic>)).toList();
     } catch (e) {
       // 任何错误都返回null，缓存失败不应影响主流程
+      debugPrint('KlineCacheService.getCached 失败: $e');
       return null;
     }
   }
@@ -81,18 +83,35 @@ class KlineCacheService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {
-      // 静默捕获错误，缓存失败不应影响主流程
+      // 缓存失败不应影响主流程
+      debugPrint('KlineCacheService.saveCache 失败: $e');
     }
   }
 
-  /// 检查缓存是否有效
+  /// 检查缓存是否有效（基于 _cacheValidDuration 判断）
   ///
-  /// 注意：实际的缓存验证在getCached方法中进行
-  /// 这是一个辅助方法，用于快速检查缓存是否存在
-  bool isCacheValid(String symbol, String interval) {
-    // 实际的验证逻辑在getCached中实现
-    // 这里返回true作为占位符
-    return true;
+  /// 注意：实际缓存验证在 getCached 方法中执行，此方法提供快速前端判断。
+  Future<bool> isCacheValid(String symbol, String interval) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final results = await db.query(
+        'kline_cache',
+        where: 'symbol = ? AND interval = ?',
+        whereArgs: [symbol, interval],
+        limit: 1,
+      );
+
+      if (results.isEmpty) return false;
+
+      final cacheEntry = results.first;
+      final cachedAt = cacheEntry['cached_at'] as int;
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      return (now - cachedAt) <= _cacheValidDuration;
+    } catch (e) {
+      debugPrint('KlineCacheService.isCacheValid 失败: $e');
+      return false;
+    }
   }
 
   /// 清理过期的缓存数据
@@ -110,7 +129,7 @@ class KlineCacheService {
         whereArgs: [expireTime],
       );
     } catch (e) {
-      // 静默捕获错误
+      debugPrint('KlineCacheService.cleanOldData 失败: $e');
     }
   }
 
@@ -120,7 +139,7 @@ class KlineCacheService {
       final db = await DatabaseHelper.instance.database;
       await db.delete('kline_cache');
     } catch (e) {
-      // 静默捕获错误
+      debugPrint('KlineCacheService.clearAll 失败: $e');
     }
   }
 
@@ -135,10 +154,15 @@ class KlineCacheService {
       );
 
       if (result.isNotEmpty && result.first['total_size'] != null) {
-        return result.first['total_size'] as int;
+        // SUM 返回 num 类型，安全转换
+        final size = result.first['total_size'];
+        if (size is int) return size;
+        if (size is double) return size.toInt();
+        return (size as num).toInt();
       }
       return 0;
     } catch (e) {
+      debugPrint('KlineCacheService.getCacheSize 失败: $e');
       return 0;
     }
   }
@@ -153,7 +177,7 @@ class KlineCacheService {
       await prefs.setString(_lastSymbolKey, symbol);
       await prefs.setString(_lastIntervalKey, interval);
     } catch (e) {
-      // 静默捕获错误
+      debugPrint('KlineCacheService.savePreferences 失败: $e');
     }
   }
 
@@ -165,6 +189,7 @@ class KlineCacheService {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getString(_lastSymbolKey) ?? 'BTCUSDT';
     } catch (e) {
+      debugPrint('KlineCacheService.getLastSymbol 失败: $e');
       return 'BTCUSDT';
     }
   }
@@ -177,6 +202,7 @@ class KlineCacheService {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getString(_lastIntervalKey) ?? '15m';
     } catch (e) {
+      debugPrint('KlineCacheService.getLastInterval 失败: $e');
       return '15m';
     }
   }

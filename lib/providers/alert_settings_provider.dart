@@ -41,8 +41,8 @@ class AlertSettingsProvider extends ChangeNotifier {
   /// 中分阈值（0-100）。
   int get medThreshold => _medThreshold;
 
-  /// 查询单 TF 的开关状态。未注册的 TF 默认返回 `false`。
-  bool getTimeframeToggle(String tf) => _timeframeToggles[tf] ?? false;
+  /// 查询单 TF 的开关状态。未注册的 TF 默认返回 `true`（与 load() 初始化一致）。
+  bool getTimeframeToggle(String tf) => _timeframeToggles[tf] ?? true;
 
   // ── 配置读写 ─────────────────────────────────────────
 

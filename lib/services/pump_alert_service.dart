@@ -42,7 +42,11 @@ class PumpAlertService {
     );
   }
 
+  /// 标记服务已销毁，防止 dispose 后被误用
+  bool _disposed = false;
+
   Future<void> start() async {
+    if (_disposed) return;
     if (_isRunning) return;
 
     await initialize();
@@ -69,7 +73,7 @@ class PumpAlertService {
 
     _isRunning = false;
 
-    await _tickerSubscription?.cancel();
+    _tickerSubscription?.cancel();
     await _wsManager.disconnect();
   }
 
@@ -117,7 +121,8 @@ class PumpAlertService {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
     await stop();
-    _wsManager.dispose();
+    _wsManager.dispose(); // 注意：PumpAlertService是单例，dispose后不可再次使用
   }
 }

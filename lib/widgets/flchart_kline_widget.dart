@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:tomapp/models/kline_data.dart';
+import 'package:tomapp/services/theme_provider.dart';
 
 /// fl_chart 原生绘制的 K 线图组件。
 ///
@@ -47,7 +48,7 @@ class FlChartKlineWidget extends StatefulWidget {
 }
 
 class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
-  static const Color _upColor = Color(0xFFef5350); // 涨 = 红
+  static const Color _upColor = AppColors.destructive; // 涨 = 红
   static const Color _downColor = Color(0xFF26a69a); // 跌 = 绿
   static const Color _gridColor = Color(0xFF222222); // 横向网格（略加深，可见）
 
@@ -175,7 +176,11 @@ class _FlChartKlineWidgetState extends State<FlChartKlineWidget> {
             if (k.high > dataMax) dataMax = k.high;
             if (k.volume > maxVol) maxVol = k.volume;
             vols.add(k.volume);
-            volColors.add(k.close >= k.open ? _downColor : _upColor);
+            volColors.add(k.close > k.open
+                ? _upColor
+                : k.close < k.open
+                    ? _downColor
+                    : Colors.grey);
             // MA 点：纳入极值计算，保证均线在 Y 范围内
             final m5 = _maAt(widget.ma5, i);
             final m10 = _maAt(widget.ma10, i);
