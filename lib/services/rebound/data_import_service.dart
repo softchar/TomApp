@@ -45,7 +45,7 @@ class DataImportService {
     final url =
         '$_baseUrl/$symbol/$interval/$symbol-$interval-$year-$monthStr.zip';
 
-    final response = await http.get(Uri.parse(url));
+    final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
 
     if (response.statusCode != 200) {
       throw Exception('下载失败 ($symbol $year-$monthStr): HTTP ${response.statusCode}');
@@ -178,7 +178,7 @@ class DataImportService {
         '$baseUrl?symbol=$symbol&interval=$interval&limit=$maxLimit&startTime=$currentStart&endTime=$endMs',
       );
 
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
         throw Exception(
@@ -226,7 +226,7 @@ class DataImportService {
   Future<List<String>> fetchTopSymbols({int count = 100}) async {
     const url = 'https://fapi.binance.com/fapi/v1/ticker/24hr';
 
-    final response = await http.get(Uri.parse(url));
+    final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
       throw Exception(

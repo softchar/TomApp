@@ -162,7 +162,7 @@ class MarketOverviewProvider extends ChangeNotifier {
 
       final response = await http.get(
         Uri.parse('${BinanceApiService.currentBaseUrl}/fapi/v1/ticker/24hr'),
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);

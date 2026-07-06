@@ -23,14 +23,27 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const FundingScreen(),
-    const LongShortScreen(),
-    const PumpScreen(),
-    const ProfileScreen(),
-    const ReboundDashboardScreen(),
-  ];
+  // 懒加载：记录哪些页面已经构建过，避免一次性构建6个页面
+  final Set<int> _builtPages = {0}; // 首页默认构建
+
+  Widget _buildScreen(int index) {
+    switch (index) {
+      case 0:
+        return const HomeScreen();
+      case 1:
+        return const FundingScreen();
+      case 2:
+        return const LongShortScreen();
+      case 3:
+        return const PumpScreen();
+      case 4:
+        return const ProfileScreen();
+      case 5:
+        return const ReboundDashboardScreen();
+      default:
+        return const HomeScreen();
+    }
+  }
 
   @override
   void initState() {
@@ -51,6 +64,16 @@ class _MainNavigationState extends State<MainNavigation> {
     }
   }
 
+  /// 懒加载页面：只构建访问过的页面，避免启动时一次性创建全部6个页面
+  Widget _buildCurrentPage() {
+    _builtPages.add(_currentIndex);
+    // 只保留当前页面在内存中，之前访问过的页面重建
+    return KeyedSubtree(
+      key: ValueKey(_currentIndex),
+      child: _buildScreen(_currentIndex),
+    );
+  }
+
   Future<void> _initContractSync() async {
     final syncSettings = context.read<ContractSyncSettings>();
     if (syncSettings.autoSyncEnabled) {
@@ -63,10 +86,7 @@ class _MainNavigationState extends State<MainNavigation> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: _buildCurrentPage(),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: isDark ? AppColors.surface : Colors.white,

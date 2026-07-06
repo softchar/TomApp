@@ -65,7 +65,7 @@ class BinanceApiService {
 
       final response = await _client
           .get(uri)
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -86,7 +86,7 @@ class BinanceApiService {
   Future<Map<String, int>> fetchFundingIntervals() async {
     try {
       final uri = Uri.parse('$_baseUrl$_fundingInfoEndpoint');
-      final response = await _client.get(uri).timeout(const Duration(seconds: 30));
+      final response = await _client.get(uri).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -175,7 +175,7 @@ class BinanceApiService {
           'Connection': 'keep-alive',
           'Referer': 'https://www.binance.com/',
         },
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -456,7 +456,7 @@ extension KlineApi on BinanceApiService {
           .replace(queryParameters: queryParams);
 
       final response = await _client.get(uri).timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 10),
       );
 
       if (response.statusCode == 200) {
@@ -492,7 +492,7 @@ extension KlineApi on BinanceApiService {
           .replace(queryParameters: queryParams);
 
       final response = await _client.get(uri).timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 10),
       );
 
       if (response.statusCode == 200) {

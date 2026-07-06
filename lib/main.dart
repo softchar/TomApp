@@ -271,28 +271,49 @@ void main() async {
   // 配置 API
   configureApi();
 
-  // 初始化收藏服务
-  await FavoriteService().initialize();
+  // 立即启动 App，不阻塞主线程
+  runApp(const MyApp());
 
-  // Initialize contract sync settings
-  await ContractSyncSettings.instance.init();
+  // 以下初始化延迟到 runApp 之后，避免 ANR
+  _deferredInit();
+}
 
-  // 初始化并启动后台快速上涨检测服务
-  final backgroundService = PumpBackgroundService.instance;
-  await backgroundService.initialize(onStart: callbackDispatcher);
-
-  // 启动后台服务
-  await backgroundService.start();
-
-  // 验证服务是否正在运行
-  final isRunning = await backgroundService.isRunning;
-  debugPrint('PumpBackgroundService 启动状态: $isRunning');
-
-  if (!isRunning) {
-    debugPrint('警告: 后台服务启动失败，请检查权限配置');
+/// 延迟初始化：后台服务、收藏等非 UI 关键操作
+/// 不阻塞主线程，出错也不会影响 App 启动
+Future<void> _deferredInit() async {
+  try {
+    // 初始化收藏服务
+    await FavoriteService().initialize();
+  } catch (e) {
+    debugPrint('收藏服务初始化失败: $e');
   }
 
-  runApp(const MyApp());
+  try {
+    // Initialize contract sync settings
+    await ContractSyncSettings.instance.init();
+  } catch (e) {
+    debugPrint('合约同步设置初始化失败: $e');
+  }
+
+  // 给 UI 一点渲染时间，再启动后台服务
+  await Future.delayed(const Duration(seconds: 2));
+
+  try {
+    // 初始化并启动后台快速上涨检测服务
+    final backgroundService = PumpBackgroundService.instance;
+    await backgroundService.initialize(onStart: callbackDispatcher);
+    await backgroundService.start();
+
+    // 验证服务是否正在运行
+    final isRunning = await backgroundService.isRunning;
+    debugPrint('PumpBackgroundService 启动状态: $isRunning');
+
+    if (!isRunning) {
+      debugPrint('警告: 后台服务启动失败，请检查权限配置');
+    }
+  } catch (e) {
+    debugPrint('后台服务启动失败: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {

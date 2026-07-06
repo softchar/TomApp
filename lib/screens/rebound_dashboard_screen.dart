@@ -100,6 +100,7 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
   bool _isRetrying = false; // 错误态重试进行中（区分首启 loading，文案不同）
   bool _showHistory = false; // 通知历史面板折叠态
   String? _initError;
+  String _initStatus = '正在初始化...'; // 初始化进度文案
 
   @override
   void initState() {
@@ -118,13 +119,42 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
   /// 命中标的再由 alertService 动态精跟；看板启动避免 app 启动建全量 WS）。
   Future<void> _startAlertService() async {
     // 重试路径进入时也显示 loading，避免闪现错误态。
-    if (mounted) setState(() => _isInitializing = true);
+    if (mounted) setState(() { _isInitializing = true; _initStatus = '正在加载合约列表...'; });
     try {
       final provider = context.read<ReboundScoreProvider>();
       final api = BinanceApiService();
       final streamService = ReboundKlineStreamService(api);
       final detector = ReboundDetector(TechnicalIndicators());
       final exchangeInfo = context.read<ExchangeInfoService>();
+
+      // 等待 ExchangeInfoService 初始化完成（加载合约列表）
+      if (!exchangeInfo.isInitialized) {
+        if (mounted) setState(() => _initStatus = '正在等待合约列表加载...');
+        final waitStart = DateTime.now();
+        while (!exchangeInfo.isInitialized &&
+            DateTime.now().difference(waitStart).inSeconds < 10) {
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+        if (!exchangeInfo.isInitialized) {
+          throw Exception('合约列表加载超时，请检查网络后重试');
+        }
+      }
+
+      // 检查合约列表是否为空
+      var tradableCount = exchangeInfo.symbols.values
+          .where((s) => s.isUsdtPerpetual && s.isTradable)
+          .length;
+      if (tradableCount == 0) {
+        // 合约列表为空，主动从 API 拉取
+        if (mounted) setState(() => _initStatus = '正在从币安获取合约列表...');
+        await exchangeInfo.fetchExchangeInfo();
+        tradableCount = exchangeInfo.symbols.values
+            .where((s) => s.isUsdtPerpetual && s.isTradable)
+            .length;
+        if (tradableCount == 0) {
+          throw Exception('未获取到可交易合约列表，请检查网络连接');
+        }
+      }
 
       _notificationRepository = ReboundNotificationRepository();
       final signalRepository = ReboundSignalRepository();
@@ -201,6 +231,7 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
       await provider.loadNotificationHistory(
           _notificationRepository!.queryRecent);
       provider.addLog('扫描器已启动 · 全市场 15m 轮询中（首轮约 40-50s）');
+      if (mounted) setState(() => _initStatus = '正在启动市场扫描...');
       _scanner!.start();
       if (mounted) setState(() => _isInitializing = false);
     } catch (e, st) {
@@ -227,6 +258,12 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
     }
     if (msg.contains('429') || msg.contains('rate limit')) {
       return '请求过于频繁，已被限流';
+    }
+    if (msg.contains('合约列表')) {
+      return msg.replaceAll('Exception: ', '');
+    }
+    if (msg.contains('未获取到')) {
+      return msg.replaceAll('Exception: ', '');
     }
     return '监控服务启动失败';
   }
@@ -284,7 +321,7 @@ class _ReboundDashboardScreenState extends State<ReboundDashboardScreen> {
                       color: AppColors.textSecondary),
                   const SizedBox(height: 16),
                   Text(
-                    _isRetrying ? '正在重新连接...' : '正在连接市场数据...',
+                    _isRetrying ? '正在重新连接...' : _initStatus,
                     style: AppTextStyles.bodyMedium,
                   ),
                 ],
