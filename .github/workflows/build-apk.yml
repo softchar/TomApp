@@ -24,11 +24,14 @@ jobs:
           flutter-version: '3.44.4'
           channel: 'stable'
 
-      - name: Flutter doctor
-        run: flutter doctor -v
-
       - name: Get dependencies
-        run: flutter pub get -v 2>&1 | tail -30
+        run: |
+          flutter pub get 2>&1 || {
+            echo "::error::flutter pub get failed"
+            echo "--- pubspec.yaml ---"
+            cat pubspec.yaml
+            exit 1
+          }
 
       - name: Build APK
         run: flutter build apk --release
