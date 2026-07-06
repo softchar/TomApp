@@ -28,15 +28,11 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: |
-          set -euo pipefail
-          flutter build apk --release 2>&1 | tee build.log
-          echo "=== Build completed ==="
+        run: flutter build apk --release
 
       - name: Upload APK
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/**/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: warn
