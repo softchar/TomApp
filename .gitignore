@@ -46,3 +46,4 @@ app.*.map.json
 
 # Git worktrees for isolated development
 .worktrees/
+pubspec.lock
