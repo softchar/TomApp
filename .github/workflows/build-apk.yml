@@ -21,16 +21,17 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.44.4'
           channel: 'stable'
 
       - name: Flutter doctor
         run: flutter doctor -v
 
       - name: Get dependencies
-        run: flutter pub get
+        run: flutter pub get -v 2>&1 | tail -30
 
       - name: Build APK
-        run: flutter build apk --release --verbose 2>&1 | tail -100
+        run: flutter build apk --release
 
       - name: Upload APK
         if: success()
