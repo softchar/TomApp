@@ -1,12 +1,11 @@
 allprojects {
     repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/central") }
-        // 注意：原 storage.flutter-io.cn 现解析到死节点 47.91.170.222(连接超时)，
-        // 会导致 release 构建拉 Flutter 引擎产物时永久卡死。改用腾讯云镜像。
-        maven { url = uri("https://mirrors.cloud.tencent.com/flutter/download.flutter.io") }
         google()
         mavenCentral()
+        // 中国镜像（在国内加速用，海外会自动 fallback 到上面的官方源）
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/central") }
+        maven { url = uri("https://mirrors.cloud.tencent.com/flutter/download.flutter.io") }
     }
 }
 
