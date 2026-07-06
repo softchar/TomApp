@@ -25,16 +25,10 @@ jobs:
           channel: 'stable'
 
       - name: Get dependencies
-        run: |
-          flutter pub get 2>&1 || {
-            echo "::error::flutter pub get failed"
-            echo "--- pubspec.yaml ---"
-            cat pubspec.yaml
-            exit 1
-          }
+        run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --verbose 2>&1 | tail -80
 
       - name: Upload APK
         if: success()
