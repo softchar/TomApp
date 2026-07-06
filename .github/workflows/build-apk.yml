@@ -28,11 +28,19 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release --verbose 2>&1 | tail -80
+        run: flutter build apk --release
+
+      - name: Find APK
+        run: |
+          echo "Looking for APK..."
+          find build -name "*.apk" -type f 2>/dev/null
+          find . -name "app-release.apk" -type f 2>/dev/null
 
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            **/app-release.apk
